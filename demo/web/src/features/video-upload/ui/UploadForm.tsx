@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useId, useState, type FormEvent } from 'react'
 import { uploadVideo } from '@/shared/api/video-api'
 import { Button } from '@/shared/ui/Button'
 import { Input } from '@/shared/ui/Input'
@@ -11,6 +11,7 @@ type Props = {
 }
 
 export function UploadForm({ onUploaded, apiBase }: Props) {
+  const formId = useId()
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [uploader, setUploader] = useState('demo')
@@ -47,36 +48,44 @@ export function UploadForm({ onUploaded, apiBase }: Props) {
 
   return (
     <form onSubmit={onSubmit} className="upload-form" data-testid="upload-form">
-      <label>
-        Title *
+      <div className="upload-form__field">
+        <label htmlFor={`${formId}-title`}>Title *</label>
         <Input
+          id={`${formId}-title`}
           name="title"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           autoComplete="off"
         />
-      </label>
-      <label>
-        Description
+      </div>
+      <div className="upload-form__field">
+        <label htmlFor={`${formId}-description`}>Description</label>
         <Textarea
+          id={`${formId}-description`}
           name="description"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
         />
-      </label>
-      <label>
-        Uploader
-        <Input name="uploader" value={uploader} onChange={(e) => setUploader(e.target.value)} />
-      </label>
-      <label>
-        File *
+      </div>
+      <div className="upload-form__field">
+        <label htmlFor={`${formId}-uploader`}>Uploader</label>
         <Input
+          id={`${formId}-uploader`}
+          name="uploader"
+          value={uploader}
+          onChange={(e) => setUploader(e.target.value)}
+        />
+      </div>
+      <div className="upload-form__field">
+        <label htmlFor={`${formId}-file`}>File *</label>
+        <Input
+          id={`${formId}-file`}
           name="file"
           type="file"
           accept="video/*,.mp4"
           onChange={(e) => setFile(e.target.files?.[0] ?? null)}
         />
-      </label>
+      </div>
       {error ? (
         <p className="error" role="alert">
           {error}
