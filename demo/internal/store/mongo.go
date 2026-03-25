@@ -124,7 +124,13 @@ func (s *VideoStore) List(ctx context.Context, limit int64) ([]models.Video, err
 			UpdatedAt:     raw.UpdatedAt,
 		})
 	}
-	return out, cur.Err()
+	if err := cur.Err(); err != nil {
+		return nil, err
+	}
+	if out == nil {
+		return []models.Video{}, nil
+	}
+	return out, nil
 }
 
 func (s *VideoStore) MarkReady(ctx context.Context, id, encodedPrefix string, durationSec int) error {
