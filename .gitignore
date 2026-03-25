@@ -1,0 +1,46 @@
+# Environment (keep .env.example)
+.env
+.env.local
+.env.*.local
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+coverage.out
+coverage.html
+vendor/
+
+# Build / binaries (adjust names if you commit binaries)
+/bin/
+/tmp/
+
+# IDE / editor
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node / frontend (demo/web when added)
+node_modules/
+dist/
+dist-ssr/
+*.local
+.vite/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Cursor / tooling (optional — remove if you version these)
+# .cursor/
