@@ -1,6 +1,7 @@
 import { Link, useParams } from 'react-router-dom'
 import { isFailed, isProcessing, isReady, StatusBadge } from '@/entities/video'
 import { useVideoPolling } from '@/features/video-watch'
+import { useToastOnError } from '@/shared/lib/useToastOnError'
 import { PageMain } from '@/shared/ui/PageChrome'
 import { AppHeader } from '@/widgets/app-header'
 import { buttonVariants } from '@/components/ui/button'
@@ -9,6 +10,7 @@ import { cn } from '@/lib/utils'
 export function UploadDetailView() {
   const { id } = useParams<{ id: string }>()
   const { video, watch, error, loading } = useVideoPolling(id)
+  useToastOnError(error)
 
   return (
     <div className="min-h-screen bg-background">

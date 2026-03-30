@@ -1,7 +1,9 @@
 import { useId, useState, type FormEvent, type DragEvent } from 'react'
+import { useToastOnError } from '@/shared/lib/useToastOnError'
 import { Label } from '@/components/ui/label'
 import { uploadVideo } from '@/shared/api/video-api'
 import { Button } from '@/shared/ui/Button'
+import { toast } from '@/shared/ui/sonner'
 import { Input } from '@/shared/ui/Input'
 import { Textarea } from '@/shared/ui/Textarea'
 import { cn } from '@/lib/utils'
@@ -35,13 +37,20 @@ export function UploadForm({ onUploaded, apiBase }: Props) {
   const [description, setDescription] = useState('')
   const [uploader, setUploader] = useState('demo')
   const [file, setFile] = useState<File | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  /** Validation / inline messages (no toast). */
+  const [formError, setFormError] = useState<string | null>(null)
+  /** API failure only — `useToastOnError` toasts here without toasting validation text. */
+  const [uploadError, setUploadError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
+  useToastOnError(uploadError)
+
+  const displayError = formError ?? uploadError
 
   function pickFile(next: File | null) {
     setFile(next)
-    setError(null)
+    setFormError(null)
+    setUploadError(null)
   }
 
   function onDragOver(e: DragEvent) {
@@ -72,13 +81,14 @@ export function UploadForm({ onUploaded, apiBase }: Props) {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
-    setError(null)
+    setFormError(null)
+    setUploadError(null)
     if (!title.trim()) {
-      setError('Title is required')
+      setFormError('Title is required')
       return
     }
     if (!file) {
-      setError('Choose a video file')
+      setFormError('Choose a video file')
       return
     }
     const fd = new FormData()
@@ -89,9 +99,10 @@ export function UploadForm({ onUploaded, apiBase }: Props) {
     setSubmitting(true)
     try {
       const r = await uploadVideo(fd, apiBase)
+      toast.success('Video uploaded — processing started')
       onUploaded?.({ ...r, title: title.trim(), fileName: file?.name })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed')
+      setUploadError(err instanceof Error ? err.message : 'Upload failed')
     } finally {
       setSubmitting(false)
     }
@@ -199,12 +210,12 @@ export function UploadForm({ onUploaded, apiBase }: Props) {
         </div>
       </div>
 
-      {error ? (
+      {displayError ? (
         <div
           className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-destructive text-sm"
           role="alert"
         >
-          {error}
+          {displayError}
         </div>
       ) : null}
 

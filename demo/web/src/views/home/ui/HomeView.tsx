@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 import { PageMain } from '@/shared/ui/PageChrome'
 import { AppHeader } from '@/widgets/app-header'
 import { listVideos } from '@/shared/api/video-api'
+import { useToastOnError } from '@/shared/lib/useToastOnError'
 import { VideoCard } from '@/entities/video'
 import type { Video } from '@/entities/video'
 
@@ -14,6 +15,7 @@ export function HomeView() {
   const [items, setItems] = useState<Video[]>([])
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  useToastOnError(err)
 
   useEffect(() => {
     let cancelled = false
@@ -22,8 +24,9 @@ export function HomeView() {
         const v = await listVideos()
         if (!cancelled) setItems(Array.isArray(v) ? v : [])
       } catch (e) {
-        if (!cancelled)
+        if (!cancelled) {
           setErr(e instanceof Error ? e.message : 'Failed to load')
+        }
       } finally {
         if (!cancelled) setLoading(false)
       }

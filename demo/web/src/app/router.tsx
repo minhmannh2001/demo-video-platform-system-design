@@ -1,4 +1,5 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import { Toaster } from '@/shared/ui/sonner'
 import { HomeView } from '@/views/home'
 import { UploadDetailView } from '@/views/upload-detail'
 import { UploadsListView } from '@/views/uploads-list'
@@ -8,6 +9,7 @@ import { VideoWatchView } from '@/views/video-watch'
 export function AppRouter() {
   return (
     <BrowserRouter>
+      <Toaster position="bottom-right" closeButton />
       <Routes>
         <Route path="/" element={<HomeView />} />
         <Route path="/upload" element={<UploadView />} />

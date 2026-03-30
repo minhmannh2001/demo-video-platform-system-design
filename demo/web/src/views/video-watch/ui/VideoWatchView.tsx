@@ -14,7 +14,9 @@ import { PageMain } from '@/shared/ui/PageChrome'
 import { AppHeader } from '@/widgets/app-header'
 import { Trash2 } from 'lucide-react'
 import { deleteVideo } from '@/shared/api/video-api'
+import { useToastOnError } from '@/shared/lib/useToastOnError'
 import { Button } from '@/shared/ui/Button'
+import { toast } from '@/shared/ui/sonner'
 import { cn } from '@/lib/utils'
 
 const panelClass =
@@ -35,6 +37,9 @@ export function VideoWatchView() {
   const { video, watch, error, loading } = useVideoPolling(id)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  // One hook per error source so we don’t toast twice for the same channel or spam polls.
+  useToastOnError(error)
+  useToastOnError(deleteError)
 
   const handleDelete = useCallback(async () => {
     if (!video) return
@@ -47,6 +52,7 @@ export function VideoWatchView() {
     setDeleting(true)
     try {
       await deleteVideo(video.id)
+      toast.success('Video deleted')
       navigate('/')
     } catch (e) {
       setDeleteError(e instanceof Error ? e.message : 'Delete failed')

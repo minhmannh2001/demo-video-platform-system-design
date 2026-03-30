@@ -4,6 +4,7 @@ import { buttonVariants } from '@/components/ui/button'
 import { StatusBadge } from '@/entities/video'
 import type { Video } from '@/entities/video'
 import { listVideos } from '@/shared/api/video-api'
+import { useToastOnError } from '@/shared/lib/useToastOnError'
 import { PageMain } from '@/shared/ui/PageChrome'
 import { AppHeader } from '@/widgets/app-header'
 import { cn } from '@/lib/utils'
@@ -16,6 +17,7 @@ export function UploadsListView() {
   const [videos, setVideos] = useState<Video[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  useToastOnError(error)
 
   const load = useCallback(async () => {
     try {
