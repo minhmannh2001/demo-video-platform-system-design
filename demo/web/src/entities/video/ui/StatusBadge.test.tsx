@@ -8,8 +8,8 @@ describe('StatusBadge', () => {
     expect(screen.getByTestId('status-badge')).toHaveTextContent('ready')
   })
 
-  it('applies ready class', () => {
-    const { container } = render(<StatusBadge status="ready" />)
-    expect(container.querySelector('.status-badge--ready')).toBeTruthy()
+  it('applies ready styling', () => {
+    render(<StatusBadge status="ready" />)
+    expect(screen.getByTestId('status-badge')).toHaveClass('bg-emerald-950')
   })
 })

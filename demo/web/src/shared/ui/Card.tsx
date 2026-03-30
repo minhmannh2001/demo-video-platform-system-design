@@ -1,5 +1,11 @@
 import type { ReactNode } from 'react'
 
+import { Card as ShadCard, CardContent } from '@/components/ui/card'
+
 export function Card({ children }: { children: ReactNode }) {
-  return <div className="card">{children}</div>
+  return (
+    <ShadCard>
+      <CardContent className="pt-6">{children}</CardContent>
+    </ShadCard>
+  )
 }

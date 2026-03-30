@@ -1,4 +1,5 @@
 import { useId, useState, type FormEvent } from 'react'
+import { Label } from '@/components/ui/label'
 import { uploadVideo } from '@/shared/api/video-api'
 import { Button } from '@/shared/ui/Button'
 import { Input } from '@/shared/ui/Input'
@@ -47,9 +48,11 @@ export function UploadForm({ onUploaded, apiBase }: Props) {
   }
 
   return (
-    <form onSubmit={onSubmit} className="upload-form" data-testid="upload-form">
-      <div className="upload-form__field">
-        <label htmlFor={`${formId}-title`}>Title *</label>
+    <form onSubmit={onSubmit} className="space-y-4" data-testid="upload-form">
+      <div className="space-y-1.5">
+        <Label htmlFor={`${formId}-title`} className="w-fit">
+          Title *
+        </Label>
         <Input
           id={`${formId}-title`}
           name="title"
@@ -58,8 +61,10 @@ export function UploadForm({ onUploaded, apiBase }: Props) {
           autoComplete="off"
         />
       </div>
-      <div className="upload-form__field">
-        <label htmlFor={`${formId}-description`}>Description</label>
+      <div className="space-y-1.5">
+        <Label htmlFor={`${formId}-description`} className="w-fit">
+          Description
+        </Label>
         <Textarea
           id={`${formId}-description`}
           name="description"
@@ -67,8 +72,10 @@ export function UploadForm({ onUploaded, apiBase }: Props) {
           onChange={(e) => setDescription(e.target.value)}
         />
       </div>
-      <div className="upload-form__field">
-        <label htmlFor={`${formId}-uploader`}>Uploader</label>
+      <div className="space-y-1.5">
+        <Label htmlFor={`${formId}-uploader`} className="w-fit">
+          Uploader
+        </Label>
         <Input
           id={`${formId}-uploader`}
           name="uploader"
@@ -76,8 +83,10 @@ export function UploadForm({ onUploaded, apiBase }: Props) {
           onChange={(e) => setUploader(e.target.value)}
         />
       </div>
-      <div className="upload-form__field">
-        <label htmlFor={`${formId}-file`}>File *</label>
+      <div className="space-y-1.5">
+        <Label htmlFor={`${formId}-file`} className="w-fit">
+          File *
+        </Label>
         <Input
           id={`${formId}-file`}
           name="file"
@@ -87,7 +96,7 @@ export function UploadForm({ onUploaded, apiBase }: Props) {
         />
       </div>
       {error ? (
-        <p className="error" role="alert">
+        <p className="text-destructive text-sm" role="alert">
           {error}
         </p>
       ) : null}

@@ -47,13 +47,13 @@ func main() {
 	}
 
 	proc := worker.NewProcessor(worker.Deps{
-		S3:              awsCli.S3,
-		RawBucket:       cfg.S3RawBucket,
-		EncodedBucket:   cfg.S3EncodedBucket,
-		Store:           videoStore,
-		Encoder:         worker.FFmpegEncoder{},
-		Cache:           redisCache,
-		TempDirParent:   os.TempDir(),
+		S3:            awsCli.S3,
+		RawBucket:     cfg.S3RawBucket,
+		EncodedBucket: cfg.S3EncodedBucket,
+		Store:         videoStore,
+		Encoder:       worker.FFmpegEncoder{},
+		Cache:         redisCache,
+		TempDirParent: os.TempDir(),
 	})
 
 	runCtx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { buttonVariants } from '@/components/ui/button'
 import { listVideos } from '@/shared/api/video-api'
+import { cn } from '@/lib/utils'
 import { StatusBadge } from '@/entities/video'
 import type { Video } from '@/entities/video'
+
 export function HomeView() {
   const [items, setItems] = useState<Video[]>([])
   const [err, setErr] = useState<string | null>(null)
@@ -26,24 +29,33 @@ export function HomeView() {
   }, [])
 
   return (
-    <div className="page">
-      <header className="page-header">
-        <h1>Video demo</h1>
-        <Link to="/upload" className="btn">
+    <div className="mx-auto max-w-2xl px-6 py-6">
+      <header className="mb-6 flex items-center justify-between gap-4">
+        <h1 className="text-xl font-semibold">Video demo</h1>
+        <Link to="/upload" className={cn(buttonVariants({ variant: 'outline' }))}>
           Upload
         </Link>
       </header>
-      {loading ? <p>Loading…</p> : null}
-      {err ? <p className="error">{err}</p> : null}
+      {loading ? <p className="text-muted-foreground">Loading…</p> : null}
+      {err ? <p className="text-destructive">{err}</p> : null}
       {!loading && !err && items.length === 0 ? (
-        <p>
-          No videos yet. <Link to="/upload">Upload one</Link>.
+        <p className="text-muted-foreground">
+          No videos yet.{' '}
+          <Link to="/upload" className="text-primary underline-offset-4 hover:underline">
+            Upload one
+          </Link>
+          .
         </p>
       ) : null}
-      <ul className="video-list">
+      <ul className="m-0 list-none p-0">
         {items.map((v) => (
-          <li key={v.id} className="video-list__item">
-            <Link to={`/watch/${v.id}`}>{v.title}</Link>
+          <li
+            key={v.id}
+            className="flex items-center justify-between gap-3 border-b border-border py-2 last:border-b-0"
+          >
+            <Link to={`/watch/${v.id}`} className="text-primary underline-offset-4 hover:underline">
+              {v.title}
+            </Link>
             <StatusBadge status={v.status} />
           </li>
         ))}

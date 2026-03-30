@@ -5,6 +5,8 @@ import { VideoPlayer } from './VideoPlayer'
 const { MockHls, mockDestroy } = vi.hoisted(() => {
   const mockDestroy = vi.fn()
   class MockHls {
+    static Events = { ERROR: 'hls-error' }
+    on = vi.fn()
     loadSource = vi.fn()
     attachMedia = vi.fn()
     destroy = mockDestroy
