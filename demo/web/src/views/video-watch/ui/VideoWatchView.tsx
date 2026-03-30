@@ -1,4 +1,5 @@
-import { Link, useParams } from 'react-router-dom'
+import { useCallback, useState } from 'react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   formatDurationSec,
   formatPublishedAt,
@@ -11,6 +12,9 @@ import { useVideoPolling } from '@/features/video-watch'
 import { VideoPlayer } from '@/widgets/video-player'
 import { PageMain } from '@/shared/ui/PageChrome'
 import { AppHeader } from '@/widgets/app-header'
+import { Trash2 } from 'lucide-react'
+import { deleteVideo } from '@/shared/api/video-api'
+import { Button } from '@/shared/ui/Button'
 import { cn } from '@/lib/utils'
 
 const panelClass =
@@ -27,7 +31,29 @@ function playbackStatusLabel(status: string): string {
 
 export function VideoWatchView() {
   const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
   const { video, watch, error, loading } = useVideoPolling(id)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+
+  const handleDelete = useCallback(async () => {
+    if (!video) return
+    if (
+      !window.confirm('Delete this video permanently? This cannot be undone.')
+    ) {
+      return
+    }
+    setDeleteError(null)
+    setDeleting(true)
+    try {
+      await deleteVideo(video.id)
+      navigate('/')
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : 'Delete failed')
+    } finally {
+      setDeleting(false)
+    }
+  }, [navigate, video])
 
   const title = video?.title ?? (loading ? 'Watch' : (id ?? 'Watch'))
   const desc = video?.description?.trim()
@@ -60,15 +86,25 @@ export function VideoWatchView() {
                     {video.uploader || 'Unknown'}
                   </p>
                 </div>
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    Published
-                  </p>
-                  <p className="mt-1 text-sm text-foreground">
-                    <time dateTime={video.created_at}>
-                      {formatPublishedAt(video.created_at)}
-                    </time>
-                  </p>
+                <div className="flex flex-wrap items-start gap-x-8 sm:gap-x-10">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Published
+                    </p>
+                    <p className="mt-1 text-sm text-foreground">
+                      <time dateTime={video.created_at}>
+                        {formatPublishedAt(video.created_at)}
+                      </time>
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Status
+                    </p>
+                    <div className="mt-1">
+                      <StatusBadge status={video.status} />
+                    </div>
+                  </div>
                 </div>
                 {video.duration_sec != null && video.duration_sec >= 0 ? (
                   <div>
@@ -84,8 +120,29 @@ export function VideoWatchView() {
             ) : null}
           </div>
           {video ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <StatusBadge status={video.status} />
+            <div className="flex flex-col items-end gap-4 sm:min-w-[11rem]">
+              <Button
+                type="button"
+                variant="outline"
+                size="default"
+                disabled={deleting}
+                onClick={() => void handleDelete()}
+                className={cn(
+                  'w-full cursor-pointer justify-center shadow-sm sm:w-auto',
+                  'border-destructive/45 bg-card text-destructive',
+                  'hover:bg-destructive/10 hover:text-destructive',
+                  'focus-visible:border-destructive/60 focus-visible:ring-destructive/25',
+                  'disabled:cursor-not-allowed',
+                )}
+              >
+                <Trash2 className="size-4 shrink-0" aria-hidden />
+                {deleting ? 'Deleting…' : 'Delete video'}
+              </Button>
+              {deleteError ? (
+                <p className="max-w-xs text-right text-destructive text-xs">
+                  {deleteError}
+                </p>
+              ) : null}
             </div>
           ) : null}
         </div>

@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { getVideo, getWatch, listVideos, uploadVideo } from './video-api'
+import {
+  deleteVideo,
+  getVideo,
+  getWatch,
+  listVideos,
+  uploadVideo,
+} from './video-api'
 import type { Video, WatchResponse } from '@/entities/video'
 
 describe('video-api', () => {
@@ -73,6 +79,35 @@ describe('video-api', () => {
     )
     const out = await getWatch('x', 'http://localhost:9999')
     expect(out.manifest_url).toContain('master.m3u8')
+  })
+
+  it('deleteVideo succeeds on 204', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 204,
+        text: () => Promise.resolve(''),
+      }),
+    )
+    await deleteVideo('abc', 'http://localhost:9999')
+    expect(fetch).toHaveBeenCalledWith(
+      'http://localhost:9999/videos/abc',
+      expect.objectContaining({ method: 'DELETE' }),
+    )
+  })
+
+  it('deleteVideo throws on non-ok', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        text: () => Promise.resolve('gone'),
+      }),
+    )
+    await expect(deleteVideo('x', 'http://localhost:9999')).rejects.toThrow(
+      'gone',
+    )
   })
 
   it('uploadVideo posts FormData', async () => {

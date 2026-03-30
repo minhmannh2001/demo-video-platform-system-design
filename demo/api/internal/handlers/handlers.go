@@ -46,6 +46,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/videos/upload", h.Upload)
 	r.Get("/videos", h.ListVideos)
 	r.Get("/videos/{id}", h.GetVideo)
+	r.Delete("/videos/{id}", h.DeleteVideo)
 	r.Get("/videos/{id}/watch", h.Watch)
 	r.Handle("/stream/*", http.StripPrefix("/stream/", http.HandlerFunc(h.StreamObject)))
 	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
@@ -190,6 +191,74 @@ func (h *Handler) Watch(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
+func (h *Handler) DeleteVideo(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	v, err := h.videos.GetByID(ctx, id)
+	if err != nil {
+		http.Error(w, "invalid video id", http.StatusBadRequest)
+		return
+	}
+	if v == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	if v.RawS3Key != "" {
+		_, _ = h.s3.DeleteObject(ctx, &s3.DeleteObjectInput{
+			Bucket: aws.String(h.cfg.S3RawBucket),
+			Key:    aws.String(v.RawS3Key),
+		})
+	}
+	if v.EncodedPrefix != "" {
+		var token *string
+		for {
+			out, listErr := h.s3.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+				Bucket:            aws.String(h.cfg.S3EncodedBucket),
+				Prefix:            aws.String(v.EncodedPrefix),
+				ContinuationToken: token,
+			})
+			if listErr != nil {
+				http.Error(w, "storage cleanup failed", http.StatusInternalServerError)
+				return
+			}
+			for _, obj := range out.Contents {
+				if obj.Key == nil {
+					continue
+				}
+				_, _ = h.s3.DeleteObject(ctx, &s3.DeleteObjectInput{
+					Bucket: aws.String(h.cfg.S3EncodedBucket),
+					Key:    obj.Key,
+				})
+			}
+			if !aws.ToBool(out.IsTruncated) || out.NextContinuationToken == nil {
+				break
+			}
+			token = out.NextContinuationToken
+		}
+	}
+
+	if h.videoCache != nil {
+		_ = h.videoCache.Del(ctx, id)
+	}
+
+	deleted, delErr := h.videos.DeleteByID(ctx, id)
+	if delErr != nil {
+		http.Error(w, "db delete failed", http.StatusInternalServerError)
+		return
+	}
+	if !deleted {
+		http.NotFound(w, r)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *Handler) StreamObject(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	p := strings.TrimPrefix(r.URL.Path, "/")
@@ -243,7 +312,7 @@ func CORSMiddleware(origins []string) func(http.Handler) http.Handler {
 				w.Header().Set("Access-Control-Allow-Origin", origin)
 				w.Header().Set("Access-Control-Allow-Credentials", "true")
 			}
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 			// hls.js may send Range on segment requests; preflight must allow it.
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Range")
 			// Let clients read partial-content headers on cross-origin segment responses.

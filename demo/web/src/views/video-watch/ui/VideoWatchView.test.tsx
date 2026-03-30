@@ -1,13 +1,22 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as watchFeature from '@/features/video-watch'
+import * as videoApi from '@/shared/api/video-api'
 import { makeVideo } from '@/test/fixtures/video'
 import { VideoWatchView } from './VideoWatchView'
 
 vi.mock('@/features/video-watch', () => ({
   useVideoPolling: vi.fn(),
 }))
+
+vi.mock('@/shared/api/video-api', async () => {
+  const actual = await vi.importActual<typeof videoApi>(
+    '@/shared/api/video-api',
+  )
+  return { ...actual, deleteVideo: vi.fn() }
+})
 
 vi.mock('@/widgets/video-player', () => ({
   VideoPlayer: ({ manifestUrl }: { manifestUrl: string }) => (
@@ -19,6 +28,7 @@ function renderWatch(id: string) {
   return render(
     <MemoryRouter initialEntries={[`/watch/${id}`]}>
       <Routes>
+        <Route path="/" element={<div>Home page</div>} />
         <Route path="/watch/:id" element={<VideoWatchView />} />
       </Routes>
     </MemoryRouter>,
@@ -111,5 +121,31 @@ describe('VideoWatchView', () => {
       '/',
     )
     expect(screen.getByTestId('video-player-mock')).toHaveTextContent(manifest)
+  })
+
+  it('delete video confirms then calls API and navigates home', async () => {
+    const user = userEvent.setup()
+    const video = makeVideo({ status: 'ready', title: 'To delete' })
+    vi.mocked(videoApi.deleteVideo).mockResolvedValue(undefined)
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    vi.mocked(watchFeature.useVideoPolling).mockReturnValue({
+      video,
+      watch: {
+        video_id: video.id,
+        status: 'ready',
+        manifest_url: 'http://x/m.m3u8',
+      },
+      error: null,
+      loading: false,
+      refresh: vi.fn(),
+    })
+    renderWatch(video.id)
+
+    await user.click(screen.getByRole('button', { name: /delete video/i }))
+    expect(videoApi.deleteVideo).toHaveBeenCalledWith(video.id)
+    expect(await screen.findByText('Home page')).toBeInTheDocument()
+
+    confirmSpy.mockRestore()
   })
 })

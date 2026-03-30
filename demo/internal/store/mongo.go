@@ -163,3 +163,16 @@ func (s *VideoStore) MarkFailed(ctx context.Context, id string) error {
 	})
 	return err
 }
+
+// DeleteByID removes the video document. Returns false if no document matched (e.g. wrong id).
+func (s *VideoStore) DeleteByID(ctx context.Context, id string) (bool, error) {
+	oid, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return false, err
+	}
+	res, err := s.coll.DeleteOne(ctx, bson.M{"_id": oid})
+	if err != nil {
+		return false, err
+	}
+	return res.DeletedCount > 0, nil
+}

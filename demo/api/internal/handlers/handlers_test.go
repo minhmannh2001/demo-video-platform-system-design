@@ -19,8 +19,10 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/redis/go-redis/v9"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 func testCfg() config.Config {
@@ -65,6 +67,27 @@ func (f *fakeS3) GetObject(ctx context.Context, in *s3.GetObjectInput, _ ...func
 	}, nil
 }
 
+func (f *fakeS3) DeleteObject(ctx context.Context, in *s3.DeleteObjectInput, _ ...func(*s3.Options)) (*s3.DeleteObjectOutput, error) {
+	if f.objects != nil {
+		delete(f.objects, aws.ToString(in.Key))
+	}
+	return &s3.DeleteObjectOutput{}, nil
+}
+
+func (f *fakeS3) ListObjectsV2(ctx context.Context, in *s3.ListObjectsV2Input, _ ...func(*s3.Options)) (*s3.ListObjectsV2Output, error) {
+	prefix := aws.ToString(in.Prefix)
+	var keys []types.Object
+	if f.objects != nil {
+		for k := range f.objects {
+			if strings.HasPrefix(k, prefix) {
+				kCopy := k
+				keys = append(keys, types.Object{Key: aws.String(kCopy)})
+			}
+		}
+	}
+	return &s3.ListObjectsV2Output{Contents: keys}, nil
+}
+
 func (f *fakeS3) ListBuckets(ctx context.Context, in *s3.ListBucketsInput, _ ...func(*s3.Options)) (*s3.ListBucketsOutput, error) {
 	return &s3.ListBucketsOutput{}, nil
 }
@@ -104,6 +127,9 @@ func (f *fakeStore) GetByID(ctx context.Context, id string) (*models.Video, erro
 	if f.getE != nil {
 		return nil, f.getE
 	}
+	if _, err := primitive.ObjectIDFromHex(id); err != nil {
+		return nil, err
+	}
 	if f.byID == nil {
 		return nil, nil
 	}
@@ -121,6 +147,20 @@ func (f *fakeStore) List(ctx context.Context, limit int64) ([]models.Video, erro
 	return out, nil
 }
 
+func (f *fakeStore) DeleteByID(ctx context.Context, id string) (bool, error) {
+	if _, err := primitive.ObjectIDFromHex(id); err != nil {
+		return false, err
+	}
+	if f.byID == nil {
+		return false, nil
+	}
+	if _, ok := f.byID[id]; !ok {
+		return false, nil
+	}
+	delete(f.byID, id)
+	return true, nil
+}
+
 type hitCache struct {
 	v *models.Video
 }
@@ -133,6 +173,8 @@ func (h *hitCache) Get(ctx context.Context, id string) (*models.Video, error) {
 }
 
 func (h *hitCache) Set(ctx context.Context, v *models.Video) error { return nil }
+
+func (h *hitCache) Del(ctx context.Context, id string) error { return nil }
 
 func TestUpload_validation(t *testing.T) {
 	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "http://q", &fakeStore{}, nil)
@@ -278,6 +320,75 @@ func TestWatch_ready(t *testing.T) {
 	json.NewDecoder(resp.Body).Decode(&w)
 	if w.ManifestURL != "http://localhost:8080/stream/"+id+"/master.m3u8" {
 		t.Fatalf("manifest: %q", w.ManifestURL)
+	}
+}
+
+func TestDeleteVideo_success(t *testing.T) {
+	id := "507f1f77bcf86cd799439011"
+	rawKey := "videos/" + id + "/original.mp4"
+	encKey := "videos/" + id + "/hls/master.m3u8"
+	s3f := &fakeS3{objects: map[string][]byte{
+		rawKey:  []byte("raw"),
+		encKey:  []byte("#EXTM3U"),
+	}}
+	st := &fakeStore{byID: map[string]*models.Video{
+		id: {
+			ID:            id,
+			RawS3Key:      rawKey,
+			EncodedPrefix: "videos/" + id + "/hls/",
+			Status:        models.StatusReady,
+		},
+	}}
+	h := New(testCfg(), s3f, &fakeSQS{}, "q", st, nil)
+	srv := httptest.NewServer(h.Routes())
+	t.Cleanup(srv.Close)
+
+	req, _ := http.NewRequest(http.MethodDelete, srv.URL+"/videos/"+id, nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status %d: %s", resp.StatusCode, body)
+	}
+	if _, ok := st.byID[id]; ok {
+		t.Fatal("video should be removed from store")
+	}
+	if len(s3f.objects) != 0 {
+		t.Fatalf("s3 should be empty, got %v", s3f.objects)
+	}
+}
+
+func TestDeleteVideo_notFound(t *testing.T) {
+	id := "507f1f77bcf86cd799439011"
+	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", &fakeStore{byID: map[string]*models.Video{}}, nil)
+	srv := httptest.NewServer(h.Routes())
+	t.Cleanup(srv.Close)
+	req, _ := http.NewRequest(http.MethodDelete, srv.URL+"/videos/"+id, nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("want 404, got %d", resp.StatusCode)
+	}
+}
+
+func TestDeleteVideo_invalidID(t *testing.T) {
+	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", &fakeStore{}, nil)
+	srv := httptest.NewServer(h.Routes())
+	t.Cleanup(srv.Close)
+	req, _ := http.NewRequest(http.MethodDelete, srv.URL+"/videos/not-a-valid-objectid", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d", resp.StatusCode)
 	}
 }
 

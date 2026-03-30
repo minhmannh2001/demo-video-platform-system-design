@@ -43,3 +43,16 @@ export async function uploadVideo(
   })
   return parseJson<UploadResponse>(res)
 }
+
+export async function deleteVideo(
+  id: string,
+  baseUrl: string = getApiBase(),
+): Promise<void> {
+  const res = await fetch(`${baseUrl}/videos/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(text || res.statusText)
+  }
+}
