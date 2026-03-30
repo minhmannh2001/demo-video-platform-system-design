@@ -31,7 +31,10 @@ describe('HomeView', () => {
     await waitFor(() => {
       expect(screen.getByText(/no videos yet/i)).toBeInTheDocument()
     })
-    expect(screen.getByRole('link', { name: /upload one/i })).toHaveAttribute('href', '/upload')
+    expect(screen.getByRole('link', { name: /upload one/i })).toHaveAttribute(
+      'href',
+      '/upload',
+    )
   })
 
   it('shows error when list fails', async () => {
@@ -51,6 +54,9 @@ describe('HomeView', () => {
     await waitFor(() => {
       expect(screen.getByText('My title')).toBeInTheDocument()
     })
-    expect(screen.getByRole('link', { name: /my title/i })).toHaveAttribute('href', '/watch/abc')
+    expect(screen.getByRole('link', { name: /my title/i })).toHaveAttribute(
+      'href',
+      '/watch/abc',
+    )
   })
 })

@@ -41,9 +41,12 @@ export function UploadsListView() {
 
       <PageMain>
         <div className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight">Upload queue</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Upload queue
+          </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            All videos from the API (same list as Home). Open a row for live encoding status.
+            All videos from the API (same list as Home). Open a row for live
+            encoding status.
           </p>
         </div>
 
@@ -58,10 +61,15 @@ export function UploadsListView() {
 
         {!loading && !error && videos.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border bg-muted/20 px-6 py-12 text-center">
-            <p className="text-muted-foreground">No videos in the catalog yet.</p>
+            <p className="text-muted-foreground">
+              No videos in the catalog yet.
+            </p>
             <Link
               to="/upload"
-              className={cn(buttonVariants({ variant: 'outline' }), 'mt-4 inline-flex')}
+              className={cn(
+                buttonVariants({ variant: 'outline' }),
+                'mt-4 inline-flex',
+              )}
             >
               Upload a video
             </Link>
@@ -75,9 +83,13 @@ export function UploadsListView() {
                 <tr className="border-b border-border bg-muted/40">
                   <th className="px-4 py-3 font-medium">Title</th>
                   <th className="px-4 py-3 font-medium">Video ID</th>
-                  <th className="hidden px-4 py-3 font-medium sm:table-cell">Uploader</th>
+                  <th className="hidden px-4 py-3 font-medium sm:table-cell">
+                    Uploader
+                  </th>
                   <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="hidden px-4 py-3 font-medium md:table-cell">Updated</th>
+                  <th className="hidden px-4 py-3 font-medium md:table-cell">
+                    Updated
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -98,7 +110,9 @@ export function UploadsListView() {
                       </Link>
                     </td>
                     <td className="px-4 py-3">
-                      <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">{shortId(v.id)}</code>
+                      <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
+                        {shortId(v.id)}
+                      </code>
                     </td>
                     <td className="hidden max-w-[160px] truncate px-4 py-3 text-muted-foreground sm:table-cell">
                       {v.uploader || '—'}

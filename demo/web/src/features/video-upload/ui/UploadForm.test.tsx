@@ -13,7 +13,9 @@ describe('UploadForm', () => {
     const user = userEvent.setup()
     render(<UploadForm apiBase="http://test" />)
     await user.click(screen.getByRole('button', { name: /upload/i }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('Title is required')
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Title is required',
+    )
   })
 
   it('shows validation when no file', async () => {
@@ -21,12 +23,17 @@ describe('UploadForm', () => {
     render(<UploadForm apiBase="http://test" />)
     await user.type(screen.getByLabelText(/title/i), 'My video')
     await user.click(screen.getByRole('button', { name: /upload/i }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('Choose a video file')
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Choose a video file',
+    )
   })
 
   it('calls uploadVideo and onUploaded', async () => {
     const user = userEvent.setup()
-    vi.mocked(api.uploadVideo).mockResolvedValue({ id: 'new-id', status: 'processing' })
+    vi.mocked(api.uploadVideo).mockResolvedValue({
+      id: 'new-id',
+      status: 'processing',
+    })
     const onUploaded = vi.fn()
     render(<UploadForm apiBase="http://test" onUploaded={onUploaded} />)
     await user.type(screen.getByLabelText(/title/i), 'My video')

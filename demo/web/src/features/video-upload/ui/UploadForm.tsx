@@ -100,7 +100,9 @@ export function UploadForm({ onUploaded, apiBase }: Props) {
   return (
     <form onSubmit={onSubmit} className="space-y-8" data-testid="upload-form">
       <div className="space-y-4">
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Details</p>
+        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          Details
+        </p>
         <div className="grid gap-6 md:grid-cols-2">
           <div className="flex flex-col gap-3 md:col-span-2">
             <Label htmlFor={titleId}>Video title *</Label>
@@ -139,7 +141,9 @@ export function UploadForm({ onUploaded, apiBase }: Props) {
       </div>
 
       <div className="space-y-3.5">
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Video file</p>
+        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          Video file
+        </p>
         <div
           className={cn(
             'rounded-xl border-2 border-dashed transition-colors',
@@ -205,8 +209,15 @@ export function UploadForm({ onUploaded, apiBase }: Props) {
       ) : null}
 
       <div className="flex flex-col gap-3 border-t border-border pt-6 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-xs text-muted-foreground">Fields marked * are required.</p>
-        <Button type="submit" size="lg" disabled={submitting} className="w-full sm:w-auto sm:min-w-[140px]">
+        <p className="text-xs text-muted-foreground">
+          Fields marked * are required.
+        </p>
+        <Button
+          type="submit"
+          size="lg"
+          disabled={submitting}
+          className="w-full sm:w-auto sm:min-w-[140px]"
+        >
           {submitting ? 'Uploading…' : 'Upload video'}
         </Button>
       </div>

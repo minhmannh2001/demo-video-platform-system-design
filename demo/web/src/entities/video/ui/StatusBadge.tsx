@@ -12,7 +12,10 @@ export function StatusBadge({ status }: Props) {
         isReady(status) && 'bg-emerald-950 text-emerald-200',
         isProcessing(status) && 'bg-amber-950 text-amber-200',
         isFailed(status) && 'bg-red-950 text-red-200',
-        !isReady(status) && !isProcessing(status) && !isFailed(status) && 'bg-muted text-muted-foreground',
+        !isReady(status) &&
+          !isProcessing(status) &&
+          !isFailed(status) &&
+          'bg-muted text-muted-foreground',
       )}
       data-testid="status-badge"
     >

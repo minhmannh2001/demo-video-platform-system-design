@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 
 import { buttonVariants } from '@/components/ui/button'
@@ -5,13 +6,19 @@ import { PageHeaderBar } from '@/shared/ui/PageChrome'
 import { cn } from '@/lib/utils'
 
 /** Shared outline style for header actions (same look on Home / Upload / Watch). */
-const headerActionClass = cn(buttonVariants({ variant: 'outline', size: 'default' }), 'shrink-0')
+const headerActionClass = cn(
+  buttonVariants({ variant: 'outline', size: 'default' }),
+  'shrink-0',
+)
 
 /**
  * Global top bar: brand (home) on the left, one primary action on the right.
  * FSD: lives in `widgets` because it composes routing + layout for every page.
+ *
+ * `memo`: skipping re-renders when a parent view updates unrelated state (same props — none).
+ * `useLocation` still re-renders this component when the URL changes.
  */
-export function AppHeader() {
+export const AppHeader = memo(function AppHeader() {
   const { pathname } = useLocation()
   /** List page only: hide the queue link (you’re already there). Still show on `/uploads/:id`. */
   const hideQueueNav = pathname === '/uploads'
@@ -26,7 +33,10 @@ export function AppHeader() {
         >
           Video demo
         </Link>
-        <nav className="flex flex-wrap items-center justify-end gap-2" aria-label="Main">
+        <nav
+          className="flex flex-wrap items-center justify-end gap-2"
+          aria-label="Main"
+        >
           {pathname !== '/' ? (
             <Link to="/" className={headerActionClass}>
               Home
@@ -46,4 +56,4 @@ export function AppHeader() {
       </div>
     </PageHeaderBar>
   )
-}
+})

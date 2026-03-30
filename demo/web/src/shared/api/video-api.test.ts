@@ -53,7 +53,9 @@ describe('video-api', () => {
         text: () => Promise.resolve('missing'),
       }),
     )
-    await expect(getVideo('abc', 'http://localhost:9999')).rejects.toThrow('missing')
+    await expect(getVideo('abc', 'http://localhost:9999')).rejects.toThrow(
+      'missing',
+    )
   })
 
   it('getWatch returns manifest', async () => {

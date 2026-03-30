@@ -1,5 +1,14 @@
-export type { UploadResponse, Video, VideoStatus, WatchResponse } from './model/types'
+export type {
+  UploadResponse,
+  Video,
+  VideoStatus,
+  WatchResponse,
+} from './model/types'
 export { isFailed, isProcessing, isReady } from './model/status'
-export { formatPublishedAt, truncateDescription } from './lib/format'
+export {
+  formatDurationSec,
+  formatPublishedAt,
+  truncateDescription,
+} from './lib/format'
 export { StatusBadge } from './ui/StatusBadge'
 export { VideoCard } from './ui/VideoCard'

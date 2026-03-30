@@ -33,7 +33,9 @@ describe('UploadDetailView', () => {
       refresh: vi.fn(),
     })
     renderDetail('vid1')
-    expect(screen.getByRole('link', { name: /^← upload queue$/i })).toHaveAttribute('href', '/uploads')
+    expect(
+      screen.getByRole('link', { name: /^← upload queue$/i }),
+    ).toHaveAttribute('href', '/uploads')
   })
 
   it('shows loading and id fallback in subtitle', () => {
@@ -73,7 +75,9 @@ describe('UploadDetailView', () => {
       refresh: vi.fn(),
     })
     renderDetail(video.id)
-    expect(screen.getByRole('link', { name: /^open player$/i })).toHaveAttribute('href', `/watch/${video.id}`)
+    expect(
+      screen.getByRole('link', { name: /^open player$/i }),
+    ).toHaveAttribute('href', `/watch/${video.id}`)
   })
 
   it('shows manifest loading hint when ready without manifest', () => {

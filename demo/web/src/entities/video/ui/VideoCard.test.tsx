@@ -34,10 +34,14 @@ describe('VideoCard', () => {
 
   it('renders title, uploader, status badge, and description', () => {
     renderCard(base())
-    expect(screen.getByRole('heading', { level: 2, name: /my clip/i })).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { level: 2, name: /my clip/i }),
+    ).toBeInTheDocument()
     expect(screen.getByText('demo')).toBeInTheDocument()
     expect(screen.getByTestId('status-badge')).toHaveTextContent('ready')
-    expect(screen.getByText(/a short description for the card/i)).toBeInTheDocument()
+    expect(
+      screen.getByText(/a short description for the card/i),
+    ).toBeInTheDocument()
   })
 
   it('shows placeholder when no thumbnail_url', () => {
@@ -47,8 +51,12 @@ describe('VideoCard', () => {
   })
 
   it('renders thumbnail image when thumbnail_url is set', () => {
-    const { container } = renderCard(base({ thumbnail_url: 'https://example.com/poster.jpg' }))
-    const img = container.querySelector('img[src="https://example.com/poster.jpg"]')
+    const { container } = renderCard(
+      base({ thumbnail_url: 'https://example.com/poster.jpg' }),
+    )
+    const img = container.querySelector(
+      'img[src="https://example.com/poster.jpg"]',
+    )
     expect(img).toBeTruthy()
   })
 

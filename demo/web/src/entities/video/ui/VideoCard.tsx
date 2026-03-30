@@ -43,26 +43,41 @@ export function VideoCard({ video, className }: Props) {
               className="flex h-full min-h-[8rem] w-full flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border/90 bg-muted/15 text-muted-foreground"
               aria-hidden
             >
-              <VideoIcon className="size-11 text-muted-foreground/60" strokeWidth={1.25} />
-              <span className="text-xs font-medium tracking-wide text-muted-foreground/90">No preview</span>
+              <VideoIcon
+                className="size-11 text-muted-foreground/60"
+                strokeWidth={1.25}
+              />
+              <span className="text-xs font-medium tracking-wide text-muted-foreground/90">
+                No preview
+              </span>
             </div>
           )}
         </div>
         <CardContent className="flex flex-col gap-3 px-5 pb-5 pt-4">
-          <h2 className="line-clamp-2 text-base font-semibold leading-snug text-foreground">{video.title}</h2>
+          <h2 className="line-clamp-2 text-base font-semibold leading-snug text-foreground">
+            {video.title}
+          </h2>
           <p className="text-xs text-muted-foreground">
-            <span className="font-medium text-foreground/80">{video.uploader || 'Unknown'}</span>
+            <span className="font-medium text-foreground/80">
+              {video.uploader || 'Unknown'}
+            </span>
             <span className="mx-1.5 text-border">·</span>
-            <time dateTime={video.created_at}>{formatPublishedAt(video.created_at)}</time>
+            <time dateTime={video.created_at}>
+              {formatPublishedAt(video.created_at)}
+            </time>
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge status={video.status} />
           </div>
           <div className="border-t border-border/60 pt-3">
             {preview ? (
-              <p className="line-clamp-2 text-sm leading-relaxed text-muted-foreground">{preview}</p>
+              <p className="line-clamp-2 text-sm leading-relaxed text-muted-foreground">
+                {preview}
+              </p>
             ) : (
-              <p className="text-sm italic text-muted-foreground/80">No description</p>
+              <p className="text-sm italic text-muted-foreground/80">
+                No description
+              </p>
             )}
           </div>
         </CardContent>

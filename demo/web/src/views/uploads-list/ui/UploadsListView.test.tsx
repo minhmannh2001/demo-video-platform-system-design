@@ -31,8 +31,12 @@ describe('UploadsListView', () => {
     await waitFor(() => {
       expect(screen.queryByText('Loading…')).not.toBeInTheDocument()
     })
-    expect(screen.getByText(/no videos in the catalog yet/i)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /upload a video/i })).toHaveAttribute('href', '/upload')
+    expect(
+      screen.getByText(/no videos in the catalog yet/i),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: /upload a video/i }),
+    ).toHaveAttribute('href', '/upload')
   })
 
   it('shows error message', async () => {
@@ -54,7 +58,9 @@ describe('UploadsListView', () => {
     renderList()
 
     await waitFor(() => {
-      expect(screen.getByRole('columnheader', { name: /^title$/i })).toBeInTheDocument()
+      expect(
+        screen.getByRole('columnheader', { name: /^title$/i }),
+      ).toBeInTheDocument()
     })
     expect(screen.getByRole('link', { name: /row title/i })).toHaveAttribute(
       'href',

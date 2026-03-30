@@ -13,7 +13,11 @@ type Props = {
 }
 
 /** Top app bar: distinct from page body (border + muted surface). Stays visible while scrolling. */
-export function PageHeaderBar({ children, containerClass = PAGE_CONTAINER_CLASS, className }: Props) {
+export function PageHeaderBar({
+  children,
+  containerClass = PAGE_CONTAINER_CLASS,
+  className,
+}: Props) {
   return (
     <header
       className={cn(
@@ -21,14 +25,24 @@ export function PageHeaderBar({ children, containerClass = PAGE_CONTAINER_CLASS,
         className,
       )}
     >
-      <div className={cn('mx-auto px-4 py-5 sm:px-6', containerClass)}>{children}</div>
+      <div className={cn('mx-auto px-4 py-5 sm:px-6', containerClass)}>
+        {children}
+      </div>
     </header>
   )
 }
 
 /** Primary page content below the header. */
-export function PageMain({ children, containerClass = PAGE_CONTAINER_CLASS, className }: Props) {
+export function PageMain({
+  children,
+  containerClass = PAGE_CONTAINER_CLASS,
+  className,
+}: Props) {
   return (
-    <main className={cn('mx-auto px-4 py-8 sm:px-6', containerClass, className)}>{children}</main>
+    <main
+      className={cn('mx-auto px-4 py-8 sm:px-6', containerClass, className)}
+    >
+      {children}
+    </main>
   )
 }

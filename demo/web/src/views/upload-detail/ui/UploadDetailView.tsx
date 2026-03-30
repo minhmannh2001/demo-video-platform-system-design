@@ -25,7 +25,9 @@ export function UploadDetailView() {
                 ← Upload queue
               </Link>
             </p>
-            <h1 className="mt-1 text-2xl font-semibold tracking-tight">Upload status</h1>
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight">
+              Upload status
+            </h1>
             <p className="mt-1 text-sm text-muted-foreground">
               {video?.title ?? id ?? 'Loading…'}
             </p>
@@ -36,7 +38,10 @@ export function UploadDetailView() {
               {isReady(video.status) && watch?.manifest_url ? (
                 <Link
                   to={`/watch/${video.id}`}
-                  className={cn(buttonVariants({ variant: 'default', size: 'default' }), 'inline-flex')}
+                  className={cn(
+                    buttonVariants({ variant: 'default', size: 'default' }),
+                    'inline-flex',
+                  )}
                 >
                   Open player
                 </Link>
@@ -57,28 +62,39 @@ export function UploadDetailView() {
               </div>
               <div>
                 <dt className="text-muted-foreground">Last updated</dt>
-                <dd className="mt-1">{new Date(video.updated_at).toLocaleString()}</dd>
+                <dd className="mt-1">
+                  {new Date(video.updated_at).toLocaleString()}
+                </dd>
               </div>
             </dl>
 
             <div className="mt-6 border-t border-border pt-6">
               {isProcessing(video.status) ? (
-                <p className="text-muted-foreground">Encoding in progress… This page refreshes automatically.</p>
+                <p className="text-muted-foreground">
+                  Encoding in progress… This page refreshes automatically.
+                </p>
               ) : null}
               {isFailed(video.status) ? (
-                <p className="text-destructive">Encoding failed. Check the worker or source file.</p>
+                <p className="text-destructive">
+                  Encoding failed. Check the worker or source file.
+                </p>
               ) : null}
               {isReady(video.status) && watch?.manifest_url ? (
                 <p className="text-muted-foreground">
                   Ready to play. Use <strong>Open player</strong> above or{' '}
-                  <Link to={`/watch/${video.id}`} className="font-medium text-foreground underline-offset-4 hover:underline">
+                  <Link
+                    to={`/watch/${video.id}`}
+                    className="font-medium text-foreground underline-offset-4 hover:underline"
+                  >
                     watch page
                   </Link>
                   .
                 </p>
               ) : null}
               {isReady(video.status) && !watch?.manifest_url ? (
-                <p className="text-muted-foreground">Video is ready; manifest is still loading…</p>
+                <p className="text-muted-foreground">
+                  Video is ready; manifest is still loading…
+                </p>
               ) : null}
             </div>
           </div>

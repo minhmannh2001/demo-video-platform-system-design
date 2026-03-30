@@ -13,14 +13,18 @@ function describeVideoError(el: HTMLVideoElement): string {
     3: 'MEDIA_ERR_DECODE',
     4: 'MEDIA_ERR_SRC_NOT_SUPPORTED',
   }
-  const label = code != null ? map[code] ?? `code ${code}` : 'unknown'
+  const label = code != null ? (map[code] ?? `code ${code}`) : 'unknown'
   return `${label}${el.error?.message ? `: ${el.error.message}` : ''}`
 }
 
 /** Maps internal / technical messages to a short, user-facing string. */
 function playbackErrorForUser(technical: string): string {
   const t = technical.toLowerCase()
-  if (t.includes('media_err_network') || t.includes('networkerror') || t.includes('fragload'))
+  if (
+    t.includes('media_err_network') ||
+    t.includes('networkerror') ||
+    t.includes('fragload')
+  )
     return 'Could not load playback data. Check your connection and refresh the page.'
   if (t.includes('media_err_decode') || t.includes('bufferappend'))
     return 'This video could not be decoded. Refresh the page or try another video.'
@@ -71,8 +75,12 @@ export function VideoPlayer({ manifestUrl }: Props) {
       hls.on(Hls.Events.ERROR, (_event, data) => {
         if (!data.fatal) return
         const detail =
-          typeof data.details === 'string' ? data.details : `${data.type ?? 'unknown'}`
-        setError(`HLS: ${detail}${data.response?.code ? ` (HTTP ${data.response.code})` : ''}`)
+          typeof data.details === 'string'
+            ? data.details
+            : `${data.type ?? 'unknown'}`
+        setError(
+          `HLS: ${detail}${data.response?.code ? ` (HTTP ${data.response.code})` : ''}`,
+        )
       })
       hls.loadSource(manifestUrl)
       hls.attachMedia(el)
@@ -109,7 +117,11 @@ export function VideoPlayer({ manifestUrl }: Props) {
         data-testid="video-player"
       />
       {error ? (
-        <p className="text-destructive text-sm" role="alert" data-testid="video-player-error">
+        <p
+          className="text-destructive text-sm"
+          role="alert"
+          data-testid="video-player-error"
+        >
           {playbackErrorForUser(error)}
         </p>
       ) : null}

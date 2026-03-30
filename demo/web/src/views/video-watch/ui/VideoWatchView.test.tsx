@@ -65,6 +65,7 @@ describe('VideoWatchView', () => {
     })
     renderWatch(video.id)
     expect(screen.getByText(/encoding in progress/i)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /about/i })).toBeInTheDocument()
   })
 
   it('shows failed message when failed', () => {
@@ -81,7 +82,12 @@ describe('VideoWatchView', () => {
   })
 
   it('renders VideoPlayer when ready with manifest', () => {
-    const video = makeVideo({ status: 'ready', title: 'Ready vid' })
+    const video = makeVideo({
+      status: 'ready',
+      title: 'Ready vid',
+      description: 'Full description text',
+      duration_sec: 90,
+    })
     const manifest = 'http://localhost:8080/stream/x/master.m3u8'
     vi.mocked(watchFeature.useVideoPolling).mockReturnValue({
       video,
@@ -91,7 +97,19 @@ describe('VideoWatchView', () => {
       refresh: vi.fn(),
     })
     renderWatch(video.id)
-    expect(screen.getByRole('heading', { name: /ready vid/i })).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: /ready vid/i }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Full description text')).toBeInTheDocument()
+    expect(screen.getByText('Uploaded by')).toBeInTheDocument()
+    expect(screen.getByText('Published')).toBeInTheDocument()
+    expect(screen.getByText('Length')).toBeInTheDocument()
+    expect(screen.getByText('1:30')).toBeInTheDocument()
+    expect(screen.getByText('Ready to play')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /all videos/i })).toHaveAttribute(
+      'href',
+      '/',
+    )
     expect(screen.getByTestId('video-player-mock')).toHaveTextContent(manifest)
   })
 })

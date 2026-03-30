@@ -13,6 +13,8 @@ describe('AppRouter', () => {
 
   it('renders home route', async () => {
     render(<AppRouter />)
-    expect(await screen.findByRole('heading', { name: /videos/i })).toBeInTheDocument()
+    expect(
+      await screen.findByRole('heading', { name: /videos/i }),
+    ).toBeInTheDocument()
   })
 })

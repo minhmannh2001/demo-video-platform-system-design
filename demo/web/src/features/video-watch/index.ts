@@ -1,1 +1,4 @@
-export { useVideoPolling, type UseVideoPollingResult } from './model/useVideoPolling'
+export {
+  useVideoPolling,
+  type UseVideoPollingResult,
+} from './model/useVideoPolling'

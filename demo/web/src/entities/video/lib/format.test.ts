@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { formatPublishedAt, truncateDescription } from './format'
+import {
+  formatDurationSec,
+  formatPublishedAt,
+  truncateDescription,
+} from './format'
 
 describe('formatPublishedAt', () => {
   it('returns em dash for invalid iso', () => {
@@ -14,6 +18,22 @@ describe('formatPublishedAt', () => {
     const s = formatPublishedAt('2026-03-15T14:30:00.000Z')
     expect(s).toMatch(/2026/)
     expect(s).toMatch(/Mar/)
+  })
+})
+
+describe('formatDurationSec', () => {
+  it('formats under one hour', () => {
+    expect(formatDurationSec(0)).toBe('0:00')
+    expect(formatDurationSec(65)).toBe('1:05')
+  })
+
+  it('formats one hour or more', () => {
+    expect(formatDurationSec(3661)).toBe('1:01:01')
+  })
+
+  it('returns em dash for invalid', () => {
+    expect(formatDurationSec(NaN)).toBe('—')
+    expect(formatDurationSec(-1)).toBe('—')
   })
 })
 

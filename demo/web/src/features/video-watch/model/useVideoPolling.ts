@@ -11,7 +11,10 @@ export type UseVideoPollingResult = {
   refresh: () => Promise<void>
 }
 
-export function useVideoPolling(videoId: string | undefined, pollMs = 3000): UseVideoPollingResult {
+export function useVideoPolling(
+  videoId: string | undefined,
+  pollMs = 3000,
+): UseVideoPollingResult {
   const [video, setVideo] = useState<Video | null>(null)
   const [watch, setWatch] = useState<WatchResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -21,7 +24,10 @@ export function useVideoPolling(videoId: string | undefined, pollMs = 3000): Use
     if (!videoId) return
     try {
       const base = getApiBase()
-      const [v, w] = await Promise.all([getVideo(videoId, base), getWatch(videoId, base)])
+      const [v, w] = await Promise.all([
+        getVideo(videoId, base),
+        getWatch(videoId, base),
+      ])
       setVideo(v)
       setWatch(w)
       setError(null)

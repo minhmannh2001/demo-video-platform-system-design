@@ -21,10 +21,16 @@ export function UploadView() {
         <div className="mx-auto max-w-2xl">
           <Card className="gap-0 overflow-hidden py-0 shadow-sm ring-1 ring-foreground/5">
             <CardHeader className="border-b border-border bg-muted/30 px-6 pb-4 pt-6">
-              <CardTitle className="text-lg tracking-tight">Upload a video</CardTitle>
+              <CardTitle className="text-lg tracking-tight">
+                Upload a video
+              </CardTitle>
               <CardDescription>
-                Add metadata and a file — after upload you’ll go to the status page. The video appears in{' '}
-                <strong className="font-medium text-foreground">Upload queue</strong> once the API saves it.
+                Add metadata and a file — after upload you’ll go to the status
+                page. The video appears in{' '}
+                <strong className="font-medium text-foreground">
+                  Upload queue
+                </strong>{' '}
+                once the API saves it.
               </CardDescription>
             </CardHeader>
             <CardContent className="bg-card px-6 pb-6 pt-6">

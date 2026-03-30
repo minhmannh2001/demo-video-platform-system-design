@@ -22,7 +22,8 @@ export function HomeView() {
         const v = await listVideos()
         if (!cancelled) setItems(Array.isArray(v) ? v : [])
       } catch (e) {
-        if (!cancelled) setErr(e instanceof Error ? e.message : 'Failed to load')
+        if (!cancelled)
+          setErr(e instanceof Error ? e.message : 'Failed to load')
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -38,8 +39,12 @@ export function HomeView() {
 
       <PageMain>
         <div className="mb-8">
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Videos</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Browse uploads — open a card to watch.</p>
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+            Videos
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Browse uploads — open a card to watch.
+          </p>
         </div>
 
         {loading ? (
@@ -81,7 +86,10 @@ export function HomeView() {
           <div className="rounded-xl border border-dashed border-border bg-muted/20 px-6 py-16 text-center">
             <p className="text-muted-foreground">
               No videos yet.{' '}
-              <Link to="/upload" className="font-medium text-primary underline-offset-4 hover:underline">
+              <Link
+                to="/upload"
+                className="font-medium text-primary underline-offset-4 hover:underline"
+              >
                 Upload one
               </Link>{' '}
               to see it here.

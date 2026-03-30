@@ -40,7 +40,9 @@ describe('VideoPlayer', () => {
 
   it('destroys Hls on unmount', () => {
     vi.spyOn(HTMLVideoElement.prototype, 'canPlayType').mockReturnValue('')
-    const { unmount } = render(<VideoPlayer manifestUrl="http://example/hls/master.m3u8" />)
+    const { unmount } = render(
+      <VideoPlayer manifestUrl="http://example/hls/master.m3u8" />,
+    )
     unmount()
     expect(mockDestroy).toHaveBeenCalled()
   })

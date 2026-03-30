@@ -9,18 +9,26 @@ async function parseJson<T>(res: Response): Promise<T> {
   return res.json() as Promise<T>
 }
 
-export async function listVideos(baseUrl: string = getApiBase()): Promise<Video[]> {
+export async function listVideos(
+  baseUrl: string = getApiBase(),
+): Promise<Video[]> {
   const res = await fetch(`${baseUrl}/videos`)
   const data = await parseJson<Video[] | null>(res)
   return Array.isArray(data) ? data : []
 }
 
-export async function getVideo(id: string, baseUrl: string = getApiBase()): Promise<Video> {
+export async function getVideo(
+  id: string,
+  baseUrl: string = getApiBase(),
+): Promise<Video> {
   const res = await fetch(`${baseUrl}/videos/${encodeURIComponent(id)}`)
   return parseJson<Video>(res)
 }
 
-export async function getWatch(id: string, baseUrl: string = getApiBase()): Promise<WatchResponse> {
+export async function getWatch(
+  id: string,
+  baseUrl: string = getApiBase(),
+): Promise<WatchResponse> {
   const res = await fetch(`${baseUrl}/videos/${encodeURIComponent(id)}/watch`)
   return parseJson<WatchResponse>(res)
 }
