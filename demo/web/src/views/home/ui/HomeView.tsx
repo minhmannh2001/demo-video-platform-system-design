@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { Card, CardContent } from '@/components/ui/card'
+import { cn } from '@/lib/utils'
 import { PageMain } from '@/shared/ui/PageChrome'
 import { AppHeader } from '@/widgets/app-header'
 import { listVideos } from '@/shared/api/video-api'
 import { VideoCard } from '@/entities/video'
 import type { Video } from '@/entities/video'
+
+const VIDEO_GRID_CLASS = 'grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3'
 
 export function HomeView() {
   const [items, setItems] = useState<Video[]>([])
@@ -39,18 +43,34 @@ export function HomeView() {
         </div>
 
         {loading ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div
+            className={VIDEO_GRID_CLASS}
+            role="status"
+            aria-live="polite"
+            aria-label="Loading videos"
+          >
             {Array.from({ length: 6 }).map((_, i) => (
-              <div
+              <Card
                 key={i}
-                className="overflow-hidden rounded-xl border border-border bg-card ring-1 ring-foreground/5"
+                className="h-full select-none gap-0 overflow-hidden py-0 pointer-events-none"
+                aria-hidden
               >
-                <div className="aspect-video animate-pulse bg-muted" />
-                <div className="space-y-2 p-4">
-                  <div className="h-4 w-3/4 animate-pulse rounded bg-muted" />
-                  <div className="h-3 w-1/2 animate-pulse rounded bg-muted" />
-                </div>
-              </div>
+                <div className="aspect-video animate-pulse bg-muted/60" />
+                <CardContent className="flex flex-col gap-3 px-5 pb-5 pt-4">
+                  <div className="space-y-2">
+                    <div className="h-4 w-[90%] animate-pulse rounded-md bg-muted" />
+                    <div className="h-4 w-[65%] animate-pulse rounded-md bg-muted" />
+                  </div>
+                  <div className="h-3.5 w-1/2 animate-pulse rounded-md bg-muted" />
+                  <div className="h-6 w-[4.5rem] animate-pulse rounded-full bg-muted" />
+                  <div className="border-t border-border/60 pt-3">
+                    <div className="space-y-2">
+                      <div className="h-3.5 w-full animate-pulse rounded-md bg-muted" />
+                      <div className="h-3.5 w-[85%] animate-pulse rounded-md bg-muted" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             ))}
           </div>
         ) : null}
@@ -70,7 +90,7 @@ export function HomeView() {
         ) : null}
 
         {!loading && !err && items.length > 0 ? (
-          <ul className="m-0 grid list-none grid-cols-1 gap-5 p-0 sm:grid-cols-2 lg:grid-cols-3">
+          <ul className={cn('m-0 list-none p-0', VIDEO_GRID_CLASS)}>
             {items.map((v) => (
               <li key={v.id}>
                 <VideoCard video={v} />

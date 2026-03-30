@@ -12,12 +12,12 @@ type Props = {
   className?: string
 }
 
-/** Top app bar: distinct from page body (border + muted surface). */
+/** Top app bar: distinct from page body (border + muted surface). Stays visible while scrolling. */
 export function PageHeaderBar({ children, containerClass = PAGE_CONTAINER_CLASS, className }: Props) {
   return (
     <header
       className={cn(
-        'border-b border-border bg-muted/40',
+        'sticky top-0 z-40 border-b border-border bg-muted/80 backdrop-blur-sm',
         className,
       )}
     >

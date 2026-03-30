@@ -25,7 +25,12 @@ export function VideoCard({ video, className }: Props) {
       )}
     >
       <Card className="h-full gap-0 overflow-hidden py-0 transition-shadow hover:shadow-md hover:ring-1 hover:ring-primary/25">
-        <div className="relative aspect-video w-full overflow-hidden bg-gradient-to-br from-muted to-muted/60">
+        <div
+          className={cn(
+            'relative aspect-video w-full overflow-hidden',
+            video.thumbnail_url ? 'bg-muted/30' : 'bg-card p-2.5 sm:p-3',
+          )}
+        >
           {video.thumbnail_url ? (
             <img
               src={video.thumbnail_url}
@@ -35,15 +40,15 @@ export function VideoCard({ video, className }: Props) {
             />
           ) : (
             <div
-              className="flex h-full w-full flex-col items-center justify-center gap-2 text-muted-foreground"
+              className="flex h-full min-h-[8rem] w-full flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border/90 bg-muted/15 text-muted-foreground"
               aria-hidden
             >
-              <VideoIcon className="size-12 opacity-50" strokeWidth={1.25} />
-              <span className="text-xs font-medium uppercase tracking-wide opacity-70">No preview</span>
+              <VideoIcon className="size-11 text-muted-foreground/60" strokeWidth={1.25} />
+              <span className="text-xs font-medium tracking-wide text-muted-foreground/90">No preview</span>
             </div>
           )}
         </div>
-        <CardContent className="flex flex-col gap-2 pt-4">
+        <CardContent className="flex flex-col gap-3 px-5 pb-5 pt-4">
           <h2 className="line-clamp-2 text-base font-semibold leading-snug text-foreground">{video.title}</h2>
           <p className="text-xs text-muted-foreground">
             <span className="font-medium text-foreground/80">{video.uploader || 'Unknown'}</span>
@@ -53,11 +58,13 @@ export function VideoCard({ video, className }: Props) {
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge status={video.status} />
           </div>
-          {preview ? (
-            <p className="line-clamp-2 text-sm leading-relaxed text-muted-foreground">{preview}</p>
-          ) : (
-            <p className="text-sm italic text-muted-foreground/80">No description</p>
-          )}
+          <div className="border-t border-border/60 pt-3">
+            {preview ? (
+              <p className="line-clamp-2 text-sm leading-relaxed text-muted-foreground">{preview}</p>
+            ) : (
+              <p className="text-sm italic text-muted-foreground/80">No description</p>
+            )}
+          </div>
         </CardContent>
       </Card>
     </Link>

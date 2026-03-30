@@ -9,6 +9,9 @@ describe('PageChrome', () => {
         <span>header content</span>
       </PageHeaderBar>,
     )
+    const header = screen.getByRole('banner')
+    expect(header.className).toMatch(/sticky/)
+    expect(header.className).toMatch(/top-0/)
     expect(screen.getByText('header content')).toBeInTheDocument()
     const inner = screen.getByText('header content').parentElement
     expect(inner?.className).toContain(PAGE_CONTAINER_CLASS)
