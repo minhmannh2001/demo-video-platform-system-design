@@ -32,7 +32,7 @@ describe('UploadForm', () => {
     await user.type(screen.getByLabelText(/title/i), 'My video')
     const file = new File(['x'], 'clip.mp4', { type: 'video/mp4' })
     await user.upload(screen.getByLabelText(/file/i), file)
-    await user.click(screen.getByRole('button', { name: /^upload$/i }))
+    await user.click(screen.getByRole('button', { name: /upload video/i }))
     await vi.waitFor(() => {
       expect(onUploaded).toHaveBeenCalledWith({ id: 'new-id', status: 'processing' })
     })
