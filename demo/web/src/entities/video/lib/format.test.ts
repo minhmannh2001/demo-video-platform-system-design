@@ -6,6 +6,10 @@ describe('formatPublishedAt', () => {
     expect(formatPublishedAt('not-a-date')).toBe('—')
   })
 
+  it('returns em dash for empty string', () => {
+    expect(formatPublishedAt('')).toBe('—')
+  })
+
   it('formats valid iso for en-US locale', () => {
     const s = formatPublishedAt('2026-03-15T14:30:00.000Z')
     expect(s).toMatch(/2026/)

@@ -13,7 +13,9 @@ const headerActionClass = cn(buttonVariants({ variant: 'outline', size: 'default
  */
 export function AppHeader() {
   const { pathname } = useLocation()
-  const onUploadPage = pathname === '/upload'
+  /** List page only: hide the queue link (you’re already there). Still show on `/uploads/:id`. */
+  const hideQueueNav = pathname === '/uploads'
+  const onAddVideo = pathname === '/upload'
 
   return (
     <PageHeaderBar>
@@ -24,16 +26,22 @@ export function AppHeader() {
         >
           Video demo
         </Link>
-        <nav className="flex items-center gap-2" aria-label="Main">
-          {onUploadPage ? (
+        <nav className="flex flex-wrap items-center justify-end gap-2" aria-label="Main">
+          {pathname !== '/' ? (
             <Link to="/" className={headerActionClass}>
               Home
             </Link>
-          ) : (
-            <Link to="/upload" className={headerActionClass}>
-              Upload
+          ) : null}
+          {!hideQueueNav ? (
+            <Link to="/uploads" className={headerActionClass}>
+              Upload queue
             </Link>
-          )}
+          ) : null}
+          {!onAddVideo ? (
+            <Link to="/upload" className={headerActionClass}>
+              Add video
+            </Link>
+          ) : null}
         </nav>
       </div>
     </PageHeaderBar>

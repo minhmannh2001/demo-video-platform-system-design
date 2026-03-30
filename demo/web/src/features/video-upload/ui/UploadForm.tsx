@@ -7,8 +7,14 @@ import { Textarea } from '@/shared/ui/Textarea'
 import { cn } from '@/lib/utils'
 import type { UploadResponse } from '@/entities/video'
 
+/** Response from the API plus fields needed for client tracking / navigation. */
+export type UploadSuccessPayload = UploadResponse & {
+  title: string
+  fileName?: string
+}
+
 type Props = {
-  onUploaded?: (r: UploadResponse) => void
+  onUploaded?: (r: UploadSuccessPayload) => void
   apiBase?: string
 }
 
@@ -83,7 +89,7 @@ export function UploadForm({ onUploaded, apiBase }: Props) {
     setSubmitting(true)
     try {
       const r = await uploadVideo(fd, apiBase)
-      onUploaded?.(r)
+      onUploaded?.({ ...r, title: title.trim(), fileName: file?.name })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed')
     } finally {
