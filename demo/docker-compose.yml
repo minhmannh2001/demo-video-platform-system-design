@@ -21,6 +21,14 @@ services:
     ports:
       - "6379:6379"
 
+  # Step 1 — distributed tracing UI + OTLP (see demo/docs/TRACING.md)
+  jaeger:
+    image: jaegertracing/all-in-one:1.57
+    ports:
+      - "16686:16686" # Jaeger UI
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
+
 volumes:
   localstack_data:
   mongo_data:

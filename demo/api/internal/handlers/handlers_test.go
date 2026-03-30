@@ -443,6 +443,22 @@ func TestCORSMiddleware(t *testing.T) {
 		}
 	})
 
+	t.Run("OPTIONS preflight allows traceparent", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodOptions, "/videos", nil)
+		req.Header.Set("Origin", "http://localhost:5173")
+		req.Header.Set("Access-Control-Request-Method", "GET")
+		req.Header.Set("Access-Control-Request-Headers", "traceparent")
+		rec := httptest.NewRecorder()
+		wrapped.ServeHTTP(rec, req)
+		if rec.Code != http.StatusNoContent {
+			t.Fatalf("code %d", rec.Code)
+		}
+		allow := rec.Header().Get("Access-Control-Allow-Headers")
+		if !strings.Contains(strings.ToLower(allow), "traceparent") {
+			t.Fatalf("Allow-Headers missing traceparent: %q", allow)
+		}
+	})
+
 	t.Run("GET sets ACAO", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		req.Header.Set("Origin", "http://localhost:5173")

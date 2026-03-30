@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"os"
 	"os/signal"
@@ -12,16 +13,33 @@ import (
 	"video-platform/demo/internal/cache"
 	"video-platform/demo/internal/config"
 	"video-platform/demo/internal/store"
+	"video-platform/demo/internal/tracing"
 	"video-platform/demo/internal/worker"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 func main() {
 	cfg := config.Load()
 	ctx := context.Background()
+
+	shutdownTrace, err := tracing.Init(ctx, tracing.InitConfig{
+		ServiceName:               "video-worker",
+		EnableHTTPInstrumentation: false,
+	})
+	if err != nil {
+		log.Fatalf("tracing init: %v", err)
+	}
+	defer func() {
+		tctx, cancel := context.WithTimeout(context.Background(), tracing.ShutdownTimeout)
+		defer cancel()
+		if err := shutdownTrace(tctx); err != nil {
+			log.Printf("tracing shutdown: %v", err)
+		}
+	}()
 
 	mongoClient, err := store.Connect(ctx, cfg.MongoURI)
 	if err != nil {
@@ -70,6 +88,7 @@ func main() {
 			MaxNumberOfMessages: 1,
 			WaitTimeSeconds:     20,
 			VisibilityTimeout:   300,
+			MessageAttributeNames: []string{"All"},
 		})
 		if err != nil {
 			if runCtx.Err() != nil {
@@ -82,8 +101,22 @@ func main() {
 		for _, msg := range out.Messages {
 			body := aws.ToString(msg.Body)
 			rh := aws.ToString(msg.ReceiptHandle)
-			if err := proc.HandleMessage(runCtx, body); err != nil {
-				log.Printf("job error: %v", err)
+
+			msgCtx := tracing.ExtractFromSQSAttributes(runCtx, msg.MessageAttributes)
+			var job struct {
+				VideoID string `json:"video_id"`
+			}
+			spanAttrs := []attribute.KeyValue{
+				attribute.String("messaging.system", "aws_sqs"),
+			}
+			if err := json.Unmarshal([]byte(body), &job); err == nil && job.VideoID != "" {
+				spanAttrs = append(spanAttrs, attribute.String("video.id", job.VideoID))
+			}
+			msgCtx, span := tracing.Start(msgCtx, "worker.encode_job", spanAttrs...)
+			procErr := proc.HandleMessage(msgCtx, body)
+			tracing.Finish(span, procErr)
+			if procErr != nil {
+				log.Printf("job error: %v", procErr)
 			}
 			_, delErr := awsCli.SQS.DeleteMessage(runCtx, &sqs.DeleteMessageInput{
 				QueueUrl:      aws.String(queueURL),
