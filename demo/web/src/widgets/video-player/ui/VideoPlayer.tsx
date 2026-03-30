@@ -17,6 +17,29 @@ function describeVideoError(el: HTMLVideoElement): string {
   return `${label}${el.error?.message ? `: ${el.error.message}` : ''}`
 }
 
+/** Maps internal / technical messages to a short, user-facing string. */
+function playbackErrorForUser(technical: string): string {
+  const t = technical.toLowerCase()
+  if (t.includes('media_err_network') || t.includes('networkerror') || t.includes('fragload'))
+    return 'Could not load playback data. Check your connection and refresh the page.'
+  if (t.includes('media_err_decode') || t.includes('bufferappend'))
+    return 'This video could not be decoded. Refresh the page or try another video.'
+  if (
+    t.includes('media_err_src_not_supported') ||
+    t.includes('media_element_error') ||
+    t.includes('format error')
+  ) {
+    return 'This stream cannot be played in your browser (unsupported format or codec). Try another browser or refresh the page.'
+  }
+  if (t.includes('media_err_aborted'))
+    return 'Playback was interrupted. Try again.'
+  if (t.includes('manifest') || t.includes('level') || t.includes('playlist'))
+    return 'Could not load the playlist. Try refreshing the page.'
+  if (t.includes('http') && /\b(401|403|404|500|502|503)\b/.test(t))
+    return 'The server rejected the request or the video was not found. Try again later.'
+  return 'Playback failed. Refresh the page or try again later.'
+}
+
 export function VideoPlayer({ manifestUrl }: Props) {
   const ref = useRef<HTMLVideoElement>(null)
   const [error, setError] = useState<string | null>(null)
@@ -67,6 +90,12 @@ export function VideoPlayer({ manifestUrl }: Props) {
     }
   }, [manifestUrl])
 
+  useEffect(() => {
+    if (error) {
+      console.warn('[VideoPlayer]', error)
+    }
+  }, [error])
+
   if (!manifestUrl) return null
 
   return (
@@ -81,9 +110,7 @@ export function VideoPlayer({ manifestUrl }: Props) {
       />
       {error ? (
         <p className="text-destructive text-sm" role="alert" data-testid="video-player-error">
-          {error}. Check DevTools → Network → failed requests to <code>/stream/</code>. CORS:{' '}
-          <code className="rounded bg-muted px-1 py-0.5 text-xs">CORS_ORIGINS</code> must include your
-          exact page origin (e.g. <code className="rounded bg-muted px-1 py-0.5 text-xs">http://127.0.0.1:5173</code>).
+          {playbackErrorForUser(error)}
         </p>
       ) : null}
     </div>

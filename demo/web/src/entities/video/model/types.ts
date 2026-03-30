@@ -7,6 +7,8 @@ export type Video = {
   uploader: string
   raw_s3_key: string
   encoded_prefix?: string
+  /** Poster / thumbnail URL when API provides one (optional). */
+  thumbnail_url?: string
   status: VideoStatus
   duration_sec?: number
   created_at: string

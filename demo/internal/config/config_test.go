@@ -95,6 +95,15 @@ func TestLoad_overrides(t *testing.T) {
 	}
 }
 
+func TestLoad_cors_whitespaceOnlyFallsBackToDevDefaults(t *testing.T) {
+	clearDemoEnv(t)
+	t.Setenv("CORS_ORIGINS", "  ,  , ")
+	c := Load()
+	if len(c.CORSOrigins) != 2 {
+		t.Fatalf("CORSOrigins: got %#v want len 2", c.CORSOrigins)
+	}
+}
+
 func TestLoad_redisTTL_invalidFallsBackToDefault(t *testing.T) {
 	clearDemoEnv(t)
 	t.Setenv("REDIS_CACHE_TTL_SEC", "not-a-number")

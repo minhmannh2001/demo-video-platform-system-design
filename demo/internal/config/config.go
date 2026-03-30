@@ -33,6 +33,10 @@ func Load() Config {
 			cors = append(cors, s)
 		}
 	}
+	// Non-empty but whitespace-only env (e.g. "   ") parses to zero origins and breaks CORS entirely.
+	if len(cors) == 0 {
+		cors = []string{"http://localhost:5173", "http://127.0.0.1:5173"}
+	}
 	return Config{
 		HTTPAddr:        getenv("HTTP_ADDR", ":8080"),
 		AWSRegion:       getenv("AWS_REGION", "us-east-1"),

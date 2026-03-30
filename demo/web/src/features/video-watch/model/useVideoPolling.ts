@@ -26,7 +26,7 @@ export function useVideoPolling(videoId: string | undefined, pollMs = 3000): Use
       setWatch(w)
       setError(null)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'load failed')
+      setError(e instanceof Error ? e.message : 'Failed to load')
     } finally {
       setLoading(false)
     }

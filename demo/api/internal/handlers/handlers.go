@@ -246,6 +246,8 @@ func CORSMiddleware(origins []string) func(http.Handler) http.Handler {
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 			// hls.js may send Range on segment requests; preflight must allow it.
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Range")
+			// Let clients read partial-content headers on cross-origin segment responses.
+			w.Header().Set("Access-Control-Expose-Headers", "Content-Range, Accept-Ranges, Content-Length")
 			if r.Method == http.MethodOptions {
 				w.WriteHeader(http.StatusNoContent)
 				return
