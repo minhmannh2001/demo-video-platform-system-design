@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -113,8 +114,11 @@ func (p *Processor) processVideo(ctx context.Context, id string) error {
 		}
 	}
 	if v == nil {
+		slog.WarnContext(ctx, "encode_video_not_found", "video_id", id)
 		return ErrVideoNotFound
 	}
+
+	slog.InfoContext(ctx, "encode_job_started", "video_id", id, "status", v.Status, "raw_s3_key", v.RawS3Key)
 
 	workDir, err := os.MkdirTemp(p.d.TempDirParent, "video-enc-*")
 	if err != nil {
@@ -127,6 +131,7 @@ func (p *Processor) processVideo(ctx context.Context, id string) error {
 		p.markFailed(ctx, id)
 		return fmt.Errorf("download raw: %w", err)
 	}
+	slog.InfoContext(ctx, "encode_raw_downloaded", "video_id", id, "local_path", inPath)
 
 	hlsDir := filepath.Join(workDir, "hls")
 	if err := os.MkdirAll(hlsDir, 0o755); err != nil {
@@ -146,12 +151,14 @@ func (p *Processor) processVideo(ctx context.Context, id string) error {
 			return fmt.Errorf("encode: %w", err)
 		}
 	}
+	slog.InfoContext(ctx, "encode_hls_complete", "video_id", id)
 
 	prefix := fmt.Sprintf("videos/%s/hls", id)
 	if err := p.uploadHLSDir(ctx, id, hlsDir); err != nil {
 		p.markFailed(ctx, id)
 		return fmt.Errorf("upload hls: %w", err)
 	}
+	slog.InfoContext(ctx, "encode_hls_uploaded", "video_id", id, "encoded_prefix", prefix)
 
 	{
 		c, sp := tracing.Start(ctx, "mongo.videos.updateOne",
@@ -166,6 +173,8 @@ func (p *Processor) processVideo(ctx context.Context, id string) error {
 			return err
 		}
 	}
+	slog.InfoContext(ctx, "video_mark_ready", "video_id", id, "encoded_prefix", prefix)
+
 	if p.d.Cache != nil {
 		c, sp := tracing.Start(ctx, "redis.video.del",
 			attribute.String("redis.key", "video:"+id),
@@ -179,6 +188,7 @@ func (p *Processor) processVideo(ctx context.Context, id string) error {
 }
 
 func (p *Processor) markFailed(ctx context.Context, id string) {
+	slog.ErrorContext(ctx, "video_mark_failed", "video_id", id)
 	c, sp := tracing.Start(ctx, "mongo.videos.updateOne",
 		attribute.String("db.system", "mongodb"),
 		attribute.String("db.mongodb.collection", "videos"),

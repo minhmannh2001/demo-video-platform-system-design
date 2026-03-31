@@ -52,13 +52,21 @@ func RequestLogMiddleware() func(http.Handler) http.Handler {
 				pattern = r.URL.Path
 			}
 
-			slog.Info("request completed",
+			attrs := []any{
 				"method", r.Method,
 				"path", pattern,
 				"status", rec.status,
 				"duration_ms", time.Since(start).Milliseconds(),
 				"request_id", requestID,
-			)
+			}
+			switch {
+			case rec.status >= 500:
+				slog.ErrorContext(r.Context(), "request completed", attrs...)
+			case rec.status >= 400:
+				slog.WarnContext(r.Context(), "request completed", attrs...)
+			default:
+				slog.InfoContext(r.Context(), "request completed", attrs...)
+			}
 		})
 	}
 }

@@ -119,11 +119,17 @@ func main() {
 			if err := json.Unmarshal([]byte(body), &job); err == nil && job.VideoID != "" {
 				spanAttrs = append(spanAttrs, attribute.String("video.id", job.VideoID))
 			}
+			if job.VideoID != "" {
+				slog.InfoContext(msgCtx, "sqs_job_received",
+					"video_id", job.VideoID,
+					"sqs_message_id", aws.ToString(msg.MessageId),
+				)
+			}
 			msgCtx, span := tracing.Start(msgCtx, "worker.encode_job", spanAttrs...)
 			procErr := proc.HandleMessage(msgCtx, body)
 			tracing.Finish(span, procErr)
 			if procErr != nil {
-				slog.Error("encode job failed", "error", procErr, "video_id", job.VideoID)
+				slog.ErrorContext(msgCtx, "encode_job_failed", "error", procErr, "video_id", job.VideoID)
 			}
 			_, delErr := awsCli.SQS.DeleteMessage(runCtx, &sqs.DeleteMessageInput{
 				QueueUrl:      aws.String(queueURL),

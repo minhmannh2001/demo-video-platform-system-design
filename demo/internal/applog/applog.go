@@ -34,7 +34,7 @@ func Init(serviceName string) {
 			out = io.MultiWriter(os.Stdout, f)
 		}
 	}
-	h := slog.NewJSONHandler(out, opts)
+	h := WrapHandlerWithOTelTrace(slog.NewJSONHandler(out, opts))
 	lg := slog.New(h).With(slog.String("service.name", serviceName))
 	slog.SetDefault(lg)
 }

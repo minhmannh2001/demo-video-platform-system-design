@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"path"
 	"strings"
@@ -90,6 +91,13 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	slog.InfoContext(ctx, "upload_started",
+		"video_id", id,
+		"title", title,
+		"uploader", uploader,
+		"raw_s3_key", rawKey,
+	)
+
 	{
 		c, sp := tracing.Start(ctx, "s3.PutObject",
 			attribute.String("aws.service", "S3"),
@@ -107,6 +115,7 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	slog.InfoContext(ctx, "upload_raw_complete", "video_id", id, "raw_s3_key", rawKey)
 
 	v := &models.Video{
 		ID:          id,
@@ -128,6 +137,7 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	slog.InfoContext(ctx, "video_record_created", "video_id", id, "status", v.Status)
 
 	body, _ := json.Marshal(map[string]string{"video_id": id})
 	{
@@ -135,7 +145,7 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 			attribute.String("messaging.system", "aws_sqs"),
 			attribute.String("messaging.destination.name", h.queueURL),
 		)
-		_, err = h.sqs.SendMessage(c, &sqs.SendMessageInput{
+		sendOut, err := h.sqs.SendMessage(c, &sqs.SendMessageInput{
 			QueueUrl:          aws.String(h.queueURL),
 			MessageBody:       aws.String(string(body)),
 			MessageAttributes: tracing.InjectIntoSQSAttributes(c),
@@ -145,6 +155,10 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "enqueue failed", http.StatusInternalServerError)
 			return
 		}
+		slog.InfoContext(ctx, "encode_job_enqueued",
+			"video_id", id,
+			"sqs_message_id", aws.ToString(sendOut.MessageId),
+		)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -165,6 +179,7 @@ func (h *Handler) ListVideos(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "list failed", http.StatusInternalServerError)
 		return
 	}
+	slog.InfoContext(ctx, "list_videos", "count", len(list))
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(list)
 }
@@ -187,6 +202,7 @@ func (h *Handler) GetVideo(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case getErr == nil && cv != nil:
 			tracing.Finish(sp, nil)
+			slog.InfoContext(ctx, "get_video", "video_id", id, "cache_hit", true)
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(cv)
 			return
@@ -210,6 +226,7 @@ func (h *Handler) GetVideo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if v == nil {
+		slog.WarnContext(ctx, "get_video_not_found", "video_id", id)
 		http.NotFound(w, r)
 		return
 	}
@@ -222,6 +239,7 @@ func (h *Handler) GetVideo(w http.ResponseWriter, r *http.Request) {
 		setErr := h.videoCache.Set(c, v)
 		tracing.Finish(sp, setErr)
 	}
+	slog.InfoContext(ctx, "get_video", "video_id", id, "cache_hit", false, "status", v.Status)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(v)
 }
@@ -242,9 +260,11 @@ func (h *Handler) Watch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if v == nil {
+		slog.WarnContext(ctx, "watch_video_not_found", "video_id", id)
 		http.NotFound(w, r)
 		return
 	}
+	slog.InfoContext(ctx, "watch_status", "video_id", id, "video_status", v.Status)
 	resp := models.WatchResponse{VideoID: id, Status: v.Status}
 	if v.Status == models.StatusReady {
 		resp.ManifestURL = streamutil.ManifestURL(h.cfg.PublicBaseURL, id)
@@ -279,10 +299,13 @@ func (h *Handler) DeleteVideo(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if v == nil {
+			slog.WarnContext(ctx, "delete_video_not_found", "video_id", id)
 			http.NotFound(w, r)
 			return
 		}
 	}
+
+	slog.InfoContext(ctx, "delete_video_started", "video_id", id)
 
 	if v.RawS3Key != "" {
 		c, sp := tracing.Start(ctx, "s3.DeleteObject",
@@ -357,6 +380,7 @@ func (h *Handler) DeleteVideo(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	slog.InfoContext(ctx, "delete_video_complete", "video_id", id)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -373,13 +397,20 @@ func (h *Handler) StreamObject(w http.ResponseWriter, r *http.Request) {
 	if keyErr != nil {
 		switch {
 		case errors.Is(keyErr, streamutil.ErrInvalidVideoID):
+			slog.WarnContext(ctx, "stream_path_invalid", "video_id", videoID, "reason", "invalid_video_id")
 			http.NotFound(w, r)
 		case errors.Is(keyErr, streamutil.ErrInvalidRelativeKey):
+			slog.WarnContext(ctx, "stream_path_invalid", "video_id", videoID, "reason", "invalid_relative_key", "file", file)
 			http.Error(w, "invalid path", http.StatusBadRequest)
 		default:
 			http.NotFound(w, r)
 		}
 		return
+	}
+
+	// Chỉ log manifest (.m3u8) — không log từng segment .ts (rất nhiều request).
+	if strings.HasSuffix(strings.ToLower(file), ".m3u8") {
+		slog.InfoContext(ctx, "stream_manifest", "video_id", videoID, "file", file)
 	}
 
 	ctx, span := tracing.Start(ctx, "s3.GetObject",
