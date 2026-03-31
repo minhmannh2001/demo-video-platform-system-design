@@ -76,6 +76,7 @@ func main() {
 	h := handlers.New(cfg, awsCli.S3, awsCli.SQS, queueURL, videoStore, redisCache)
 
 	root := chi.NewRouter()
+	root.Use(handlers.RequestLogMiddleware())
 	root.Use(handlers.CORSMiddleware(cfg.CORSOrigins))
 	root.Mount("/", h.Routes())
 

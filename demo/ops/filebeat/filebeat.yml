@@ -7,6 +7,15 @@ filebeat.inputs:
     processors:
       - add_docker_metadata:
           host: unix:///var/run/docker.sock
+      # Docker json-file line wraps app log in {"log":"...\\n",...}; after container parsing, `message` is slog JSON.
+      - decode_json_fields:
+          fields: ["message"]
+          target: ""
+          overwrite_keys: true
+          expand_keys: true
+          max_depth: 2
+          add_error_key: true
+          ignore_failure: true
 
   # Host/local `go run`: set LOG_FILE under demo/var/host-logs/ and mount that dir below.
   - type: filestream
@@ -17,6 +26,8 @@ filebeat.inputs:
     parsers:
       - ndjson:
           keys_under_root: true
+          overwrite_keys: true
+          expand_keys: true
           add_error_key: true
 
 # Drop only Docker-backed events missing collect_logs=true (do not drop filestream events).
