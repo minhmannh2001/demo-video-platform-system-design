@@ -1,0 +1,43 @@
+filebeat.inputs:
+  - type: container
+    enabled: true
+    paths:
+      - /var/lib/docker/containers/*/*.log
+    stream: all
+    processors:
+      - add_docker_metadata:
+          host: unix:///var/run/docker.sock
+
+  # Host/local `go run`: set LOG_FILE under demo/var/host-logs/ and mount that dir below.
+  - type: filestream
+    id: host-json-logs
+    enabled: true
+    paths:
+      - /host-dev-logs/*.log
+    parsers:
+      - ndjson:
+          keys_under_root: true
+          add_error_key: true
+
+# Drop only Docker-backed events missing collect_logs=true (do not drop filestream events).
+processors:
+  - drop_event:
+      when:
+        and:
+          - has_fields: ["container.id"]
+          - not:
+              equals:
+                container.labels.collect_logs: "true"
+  - add_host_metadata: ~
+  - add_cloud_metadata: ~
+
+setup.ilm.enabled: false
+setup.template.enabled: true
+setup.template.name: logs-video-demo
+setup.template.pattern: logs-video-demo-*
+
+output.elasticsearch:
+  hosts: ["http://elasticsearch:9200"]
+  index: "logs-video-demo-%{+yyyy.MM.dd}"
+
+logging.level: info

@@ -1,6 +1,27 @@
+# Shared env for api + worker (Compose network hostnames). Tracing + structured logs on by default.
+x-api-worker-env: &api-worker-env
+  AWS_REGION: us-east-1
+  AWS_ACCESS_KEY_ID: test
+  AWS_SECRET_ACCESS_KEY: test
+  AWS_ENDPOINT_URL: http://localstack:4566
+  S3_RAW_BUCKET: video-raw
+  S3_ENCODED_BUCKET: video-encoded
+  SQS_ENCODE_QUEUE_URL: http://localstack:4566/000000000000/video-encode-jobs
+  MONGODB_URI: mongodb://mongodb:27017
+  MONGODB_DB: video_demo
+  REDIS_ADDR: redis:6379
+  REDIS_CACHE_TTL_SEC: "300"
+  OTEL_TRACING_ENABLED: "true"
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+  OTEL_TRACE_SAMPLING_ENABLED: "true"
+  OTEL_TRACE_SAMPLE_RATIO: "1.0"
+  LOG_LEVEL: info
+
 services:
   localstack:
     image: localstack/localstack:3
+    labels:
+      collect_logs: "true"
     ports:
       - "4566:4566"
     environment:
@@ -11,6 +32,8 @@ services:
 
   mongodb:
     image: mongo:7
+    labels:
+      collect_logs: "true"
     ports:
       - "27017:27017"
     volumes:
@@ -18,12 +41,16 @@ services:
 
   redis:
     image: redis:7-alpine
+    labels:
+      collect_logs: "true"
     ports:
       - "6379:6379"
 
   # Step 1 — distributed tracing UI + OTLP (see demo/docs/TRACING.md)
   jaeger:
     image: jaegertracing/all-in-one:1.57
+    labels:
+      collect_logs: "true"
     ports:
       - "16686:16686" # Jaeger UI
       - "4317:4317" # OTLP gRPC
@@ -32,6 +59,8 @@ services:
   # Logging part 2 — Elasticsearch + Kibana (see demo/docs/LOGGING.md)
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+    labels:
+      collect_logs: "true"
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false
@@ -54,10 +83,62 @@ services:
 
   kibana:
     image: docker.elastic.co/kibana/kibana:8.15.3
+    labels:
+      collect_logs: "true"
     ports:
       - "5601:5601"
     environment:
       ELASTICSEARCH_HOSTS: '["http://elasticsearch:9200"]'
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    labels:
+      collect_logs: "true"
+    ports:
+      - "8080:8080"
+    environment:
+      <<: *api-worker-env
+      HTTP_ADDR: ":8080"
+      CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
+      PUBLIC_BASE_URL: http://localhost:8080
+    depends_on:
+      - jaeger
+      - mongodb
+      - redis
+      - localstack
+
+  worker:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    labels:
+      collect_logs: "true"
+    environment:
+      <<: *api-worker-env
+    depends_on:
+      - jaeger
+      - mongodb
+      - redis
+      - localstack
+
+  # Logging part 3 — ship Docker stdout logs to Elasticsearch.
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.15.3
+    labels:
+      collect_logs: "true"
+    user: root
+    command: ["filebeat", "-e", "--strict.perms=false"]
+    volumes:
+      - ./ops/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Host `go run` + LOG_FILE=.../var/host-logs/*.log (see internal/applog)
+      - ./var/host-logs:/host-dev-logs:ro
     depends_on:
       elasticsearch:
         condition: service_healthy

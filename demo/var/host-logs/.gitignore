@@ -1,0 +1,3 @@
+# Keep directory; ignore log contents (Filebeat reads these paths when mounted).
+*
+!.gitignore
