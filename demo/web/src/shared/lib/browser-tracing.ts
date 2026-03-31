@@ -5,7 +5,12 @@ import { DocumentLoadInstrumentation } from '@opentelemetry/instrumentation-docu
 import { FetchInstrumentation } from '@opentelemetry/instrumentation-fetch'
 import { XMLHttpRequestInstrumentation } from '@opentelemetry/instrumentation-xml-http-request'
 import { resourceFromAttributes } from '@opentelemetry/resources'
-import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base'
+import {
+  AlwaysOnSampler,
+  BatchSpanProcessor,
+  ParentBasedSampler,
+  TraceIdRatioBasedSampler,
+} from '@opentelemetry/sdk-trace-base'
 import { WebTracerProvider } from '@opentelemetry/sdk-trace-web'
 
 import { getApiBase } from '@/shared/config/env'
@@ -65,6 +70,46 @@ function tracesEndpoint(): string {
   return `${window.location.origin}/otel/v1/traces`
 }
 
+export const defaultBrowserSampleRatio = 0.1
+
+/** Same rules as Go `OTEL_TRACE_SAMPLE_RATIO` (empty / invalid → defaultFrac). */
+export function parseBrowserTraceSampleRatio(
+  raw: string | undefined,
+  defaultFrac: number,
+): number {
+  if (typeof raw !== 'string' || raw.trim() === '') {
+    return defaultFrac
+  }
+  const v = Number.parseFloat(raw.trim())
+  if (!Number.isFinite(v) || v < 0 || v > 1) {
+    return defaultFrac
+  }
+  return v
+}
+
+function browserTracerSampler() {
+  if (import.meta.env.VITE_OTEL_TRACE_SAMPLING_ENABLED !== 'true') {
+    return new AlwaysOnSampler()
+  }
+  const ratio = parseBrowserTraceSampleRatio(
+    import.meta.env.VITE_OTEL_TRACE_SAMPLE_RATIO,
+    defaultBrowserSampleRatio,
+  )
+  return new ParentBasedSampler({ root: new TraceIdRatioBasedSampler(ratio) })
+}
+
+/** One-line description for console (matches Go `SamplingSummary` intent). */
+export function browserSamplingSummary(): string {
+  if (import.meta.env.VITE_OTEL_TRACE_SAMPLING_ENABLED !== 'true') {
+    return `always_on (export all traces; set VITE_OTEL_TRACE_SAMPLING_ENABLED=true for ratio)`
+  }
+  const ratio = parseBrowserTraceSampleRatio(
+    import.meta.env.VITE_OTEL_TRACE_SAMPLE_RATIO,
+    defaultBrowserSampleRatio,
+  )
+  return `parent_based trace_id_ratio=${ratio} (VITE_OTEL_TRACE_SAMPLE_RATIO)`
+}
+
 /** Registers W3C propagation + fetch/XHR spans; exports OTLP via Vite proxy in dev. */
 export function initBrowserTracingIfEnabled(): void {
   if (import.meta.env.VITE_OTEL_TRACING_ENABLED !== 'true') {
@@ -82,9 +127,12 @@ export function initBrowserTracingIfEnabled(): void {
 
   const provider = new WebTracerProvider({
     resource,
+    sampler: browserTracerSampler(),
     spanProcessors: [new BatchSpanProcessor(exporter)],
   })
   provider.register()
+
+  console.info(`[opentelemetry] video-web otlp=${tracesEndpoint()} ${browserSamplingSummary()}`)
 
   registerInstrumentations({
     instrumentations: [

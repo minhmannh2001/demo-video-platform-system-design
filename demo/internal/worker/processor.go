@@ -13,9 +13,11 @@ import (
 
 	"video-platform/demo/internal/models"
 	"video-platform/demo/internal/streamutil"
+	"video-platform/demo/internal/tracing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 var (
@@ -94,9 +96,21 @@ func (p *Processor) HandleMessage(ctx context.Context, body string) error {
 }
 
 func (p *Processor) processVideo(ctx context.Context, id string) error {
-	v, err := p.d.Store.GetByID(ctx, id)
-	if err != nil {
-		return err
+	vid := attribute.String("video.id", id)
+
+	var v *models.Video
+	{
+		c, sp := tracing.Start(ctx, "mongo.videos.findOne",
+			attribute.String("db.system", "mongodb"),
+			attribute.String("db.mongodb.collection", "videos"),
+			vid,
+		)
+		var err error
+		v, err = p.d.Store.GetByID(c, id)
+		tracing.Finish(sp, err)
+		if err != nil {
+			return err
+		}
 	}
 	if v == nil {
 		return ErrVideoNotFound
@@ -110,52 +124,95 @@ func (p *Processor) processVideo(ctx context.Context, id string) error {
 
 	inPath := filepath.Join(workDir, "input"+filepath.Ext(v.RawS3Key))
 	if err := p.downloadRaw(ctx, v.RawS3Key, inPath); err != nil {
-		_ = p.d.Store.MarkFailed(ctx, id)
+		p.markFailed(ctx, id)
 		return fmt.Errorf("download raw: %w", err)
 	}
 
 	hlsDir := filepath.Join(workDir, "hls")
 	if err := os.MkdirAll(hlsDir, 0o755); err != nil {
-		_ = p.d.Store.MarkFailed(ctx, id)
+		p.markFailed(ctx, id)
 		return err
 	}
 
-	if err := p.d.Encoder.EncodeToHLS(ctx, inPath, hlsDir); err != nil {
-		_ = p.d.Store.MarkFailed(ctx, id)
-		return fmt.Errorf("encode: %w", err)
+	{
+		c, sp := tracing.Start(ctx, "worker.encode_hls",
+			vid,
+			attribute.String("encoder", "ffmpeg"),
+		)
+		err := p.d.Encoder.EncodeToHLS(c, inPath, hlsDir)
+		tracing.Finish(sp, err)
+		if err != nil {
+			p.markFailed(ctx, id)
+			return fmt.Errorf("encode: %w", err)
+		}
 	}
 
 	prefix := fmt.Sprintf("videos/%s/hls", id)
 	if err := p.uploadHLSDir(ctx, id, hlsDir); err != nil {
-		_ = p.d.Store.MarkFailed(ctx, id)
+		p.markFailed(ctx, id)
 		return fmt.Errorf("upload hls: %w", err)
 	}
 
-	if err := p.d.Store.MarkReady(ctx, id, prefix, 0); err != nil {
-		return err
+	{
+		c, sp := tracing.Start(ctx, "mongo.videos.updateOne",
+			attribute.String("db.system", "mongodb"),
+			attribute.String("db.mongodb.collection", "videos"),
+			attribute.String("worker.mongo.op", "mark_ready"),
+			vid,
+		)
+		err := p.d.Store.MarkReady(c, id, prefix, 0)
+		tracing.Finish(sp, err)
+		if err != nil {
+			return err
+		}
 	}
 	if p.d.Cache != nil {
-		_ = p.d.Cache.Del(ctx, id)
+		c, sp := tracing.Start(ctx, "redis.video.del",
+			attribute.String("redis.key", "video:"+id),
+			vid,
+		)
+		err := p.d.Cache.Del(c, id)
+		tracing.Finish(sp, err)
+		_ = err
 	}
 	return nil
 }
 
+func (p *Processor) markFailed(ctx context.Context, id string) {
+	c, sp := tracing.Start(ctx, "mongo.videos.updateOne",
+		attribute.String("db.system", "mongodb"),
+		attribute.String("db.mongodb.collection", "videos"),
+		attribute.String("worker.mongo.op", "mark_failed"),
+		attribute.String("video.id", id),
+	)
+	err := p.d.Store.MarkFailed(c, id)
+	tracing.Finish(sp, err)
+}
+
 func (p *Processor) downloadRaw(ctx context.Context, rawKey, destPath string) error {
-	out, err := p.d.S3.GetObject(ctx, &s3.GetObjectInput{
+	c, sp := tracing.Start(ctx, "s3.GetObject",
+		attribute.String("aws.service", "S3"),
+		attribute.String("s3.bucket", p.d.RawBucket),
+		attribute.String("s3.key", rawKey),
+	)
+	out, err := p.d.S3.GetObject(c, &s3.GetObjectInput{
 		Bucket: aws.String(p.d.RawBucket),
 		Key:    aws.String(rawKey),
 	})
 	if err != nil {
+		tracing.Finish(sp, err)
 		return err
 	}
 	defer out.Body.Close()
 
 	f, err := os.Create(destPath)
 	if err != nil {
+		tracing.Finish(sp, err)
 		return err
 	}
 	defer f.Close()
 	_, err = io.Copy(f, out.Body)
+	tracing.Finish(sp, err)
 	return err
 }
 
@@ -181,12 +238,19 @@ func (p *Processor) uploadHLSDir(ctx context.Context, videoID, hlsDir string) er
 			return err
 		}
 		ct := streamutil.ContentTypeByFilename(rel)
-		_, err = p.d.S3.PutObject(ctx, &s3.PutObjectInput{
+		c, sp := tracing.Start(ctx, "s3.PutObject",
+			attribute.String("aws.service", "S3"),
+			attribute.String("s3.bucket", p.d.EncodedBucket),
+			attribute.String("s3.key", key),
+			attribute.String("video.id", videoID),
+		)
+		_, err = p.d.S3.PutObject(c, &s3.PutObjectInput{
 			Bucket:      aws.String(p.d.EncodedBucket),
 			Key:         aws.String(key),
 			Body:        bytes.NewReader(data),
 			ContentType: aws.String(ct),
 		})
+		tracing.Finish(sp, err)
 		return err
 	})
 }
