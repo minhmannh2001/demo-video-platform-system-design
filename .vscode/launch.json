@@ -1,0 +1,33 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug API (video-api, demo env)",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}/demo/api/cmd/server",
+      "cwd": "${workspaceFolder}/demo",
+      "envFile": "${workspaceFolder}/demo/.env",
+      "env": {
+        "OTEL_TRACING_ENABLED": "true",
+        "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4318",
+        "LOG_FILE": "var/host-logs/video-api.log"
+      }
+    },
+    {
+      "name": "Debug Worker (video-worker, demo env)",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}/demo/worker/cmd/worker",
+      "cwd": "${workspaceFolder}/demo",
+      "envFile": "${workspaceFolder}/demo/.env",
+      "env": {
+        "OTEL_TRACING_ENABLED": "true",
+        "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4318",
+        "LOG_FILE": "var/host-logs/video-worker.log"
+      }
+    }
+  ]
+}
