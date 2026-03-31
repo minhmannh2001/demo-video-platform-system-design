@@ -4,7 +4,7 @@ package tracing
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
@@ -77,7 +77,7 @@ func Init(ctx context.Context, cfg InitConfig) (shutdown func(context.Context) e
 		propagation.Baggage{},
 	))
 
-	log.Printf("opentelemetry: service=%q otlp=%s %s", serviceName, endpoint, SamplingSummary())
+	slog.Info("opentelemetry configured", "service.name", serviceName, "otlp.endpoint", endpoint, "sampling", SamplingSummary())
 
 	if cfg.EnableHTTPInstrumentation {
 		httpInstrumented = true

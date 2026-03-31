@@ -3,12 +3,13 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"video-platform/demo/internal/applog"
 	"video-platform/demo/internal/awsclient"
 	"video-platform/demo/internal/cache"
 	"video-platform/demo/internal/config"
@@ -23,6 +24,7 @@ import (
 )
 
 func main() {
+	applog.Init("video-worker")
 	cfg := config.Load()
 	ctx := context.Background()
 
@@ -31,25 +33,28 @@ func main() {
 		EnableHTTPInstrumentation: false,
 	})
 	if err != nil {
-		log.Fatalf("tracing init: %v", err)
+		slog.Error("tracing init failed", "error", err)
+		os.Exit(1)
 	}
 	defer func() {
 		tctx, cancel := context.WithTimeout(context.Background(), tracing.ShutdownTimeout)
 		defer cancel()
 		if err := shutdownTrace(tctx); err != nil {
-			log.Printf("tracing shutdown: %v", err)
+			slog.Warn("tracing shutdown", "error", err)
 		}
 	}()
 
 	mongoClient, err := store.Connect(ctx, cfg.MongoURI)
 	if err != nil {
-		log.Fatalf("mongo connect: %v", err)
+		slog.Error("mongo connect failed", "error", err)
+		os.Exit(1)
 	}
 	defer func() {
 		_ = mongoClient.Disconnect(context.Background())
 	}()
 	if err := mongoClient.Ping(ctx, readpref.Primary()); err != nil {
-		log.Fatalf("mongo ping: %v", err)
+		slog.Error("mongo ping failed", "error", err)
+		os.Exit(1)
 	}
 
 	videoStore := store.NewVideoStore(mongoClient.Database(cfg.MongoDB))
@@ -57,11 +62,13 @@ func main() {
 
 	awsCli, err := awsclient.New(ctx, cfg)
 	if err != nil {
-		log.Fatalf("aws: %v", err)
+		slog.Error("aws client init failed", "error", err)
+		os.Exit(1)
 	}
 	queueURL, err := awsclient.ResolveQueueURL(ctx, awsCli.SQS, cfg)
 	if err != nil {
-		log.Fatalf("sqs queue: %v", err)
+		slog.Error("sqs queue url resolve failed", "error", err)
+		os.Exit(1)
 	}
 
 	proc := worker.NewProcessor(worker.Deps{
@@ -77,24 +84,24 @@ func main() {
 	runCtx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	log.Printf("encoder worker polling %s", queueURL)
+	slog.Info("encoder worker polling", "queue_url", queueURL)
 	for {
 		if runCtx.Err() != nil {
-			log.Printf("shutdown: %v", runCtx.Err())
+			slog.Info("shutdown", "reason", runCtx.Err().Error())
 			return
 		}
 		out, err := awsCli.SQS.ReceiveMessage(runCtx, &sqs.ReceiveMessageInput{
-			QueueUrl:            aws.String(queueURL),
-			MaxNumberOfMessages: 1,
-			WaitTimeSeconds:     20,
-			VisibilityTimeout:   300,
+			QueueUrl:              aws.String(queueURL),
+			MaxNumberOfMessages:   1,
+			WaitTimeSeconds:       20,
+			VisibilityTimeout:     300,
 			MessageAttributeNames: []string{"All"},
 		})
 		if err != nil {
 			if runCtx.Err() != nil {
 				return
 			}
-			log.Printf("receive: %v", err)
+			slog.Warn("sqs receive failed", "error", err)
 			time.Sleep(2 * time.Second)
 			continue
 		}
@@ -116,14 +123,14 @@ func main() {
 			procErr := proc.HandleMessage(msgCtx, body)
 			tracing.Finish(span, procErr)
 			if procErr != nil {
-				log.Printf("job error: %v", procErr)
+				slog.Error("encode job failed", "error", procErr, "video_id", job.VideoID)
 			}
 			_, delErr := awsCli.SQS.DeleteMessage(runCtx, &sqs.DeleteMessageInput{
 				QueueUrl:      aws.String(queueURL),
 				ReceiptHandle: aws.String(rh),
 			})
 			if delErr != nil {
-				log.Printf("delete message: %v", delErr)
+				slog.Warn("sqs delete message failed", "error", delErr)
 			}
 		}
 	}
