@@ -82,11 +82,14 @@ func main() {
 
 	handler := tracing.WrapHandler(root)
 
+	// ReadTimeout applies to the entire request including multipart body. A fixed
+	// short limit (e.g. 60s) breaks large/slow uploads and surfaces as net.OpError
+	// "read" on TCP. Use 0 for no read deadline on the body (typical for upload APIs).
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
-		ReadTimeout:       60 * time.Second,
+		ReadTimeout:       0,
 		WriteTimeout:      0,
 	}
 

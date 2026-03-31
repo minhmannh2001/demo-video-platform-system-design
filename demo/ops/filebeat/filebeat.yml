@@ -46,6 +46,16 @@ setup.ilm.enabled: false
 setup.template.enabled: true
 setup.template.name: logs-video-demo
 setup.template.pattern: logs-video-demo-*
+# Exact-match IDs for Kibana / KQL (avoid dynamic text mapping → weak search + "Analysis not available" UX).
+setup.template.append_fields:
+  - name: trace_id
+    type: keyword
+  - name: span_id
+    type: keyword
+  - name: video_id
+    type: keyword
+  - name: request_id
+    type: keyword
 
 output.elasticsearch:
   hosts: ["http://elasticsearch:9200"]
