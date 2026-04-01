@@ -118,9 +118,12 @@ func (h *Handler) SearchVideos(w http.ResponseWriter, r *http.Request) {
 	highlight := strings.EqualFold(r.URL.Query().Get("highlight"), "true") ||
 		r.URL.Query().Get("highlight") == "1"
 
-	ctx, sp := tracing.Start(ctx, "elasticsearch.search",
-		attribute.String("db.system", "elasticsearch"),
-		attribute.String("elasticsearch.operation", "search"),
+	ctx, sp := tracing.Start(ctx, "video.search",
+		attribute.Int("search.pagination.from", from),
+		attribute.Int("search.pagination.size", size),
+		attribute.Bool("search.highlight", highlight),
+		attribute.Int("search.query_length", len(q)),
+		attribute.Bool("search.redis_cache_enabled", h.cfg.SearchCacheTTLSec > 0),
 	)
 	result, err := h.videoSearch.SearchPublishedVideos(ctx, q, from, size, highlight)
 	tracing.Finish(sp, err)
@@ -129,13 +132,16 @@ func (h *Handler) SearchVideos(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "search failed", http.StatusBadGateway)
 		return
 	}
-	slog.InfoContext(ctx, "video_search",
-		"q", q,
-		"total", result.Total,
-		"returned", len(result.Hits),
-		"from", result.From,
-		"size", result.Size,
-	)
+	// When Redis search cache is on, [cache.CachedPublishedSearch] logs hit/miss; avoid duplicate lines.
+	if h.cfg.SearchCacheTTLSec <= 0 {
+		slog.InfoContext(ctx, "video_search",
+			"q", q,
+			"total", result.Total,
+			"returned", len(result.Hits),
+			"from", result.From,
+			"size", result.Size,
+		)
+	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(result)
 }

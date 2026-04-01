@@ -68,3 +68,11 @@ func (c *VideoCache) Ping(ctx context.Context) error {
 	defer cancel()
 	return c.rdb.Ping(ctx).Err()
 }
+
+// Redis exposes the underlying client for composable caches (e.g. search result cache).
+func (c *VideoCache) Redis() *redis.Client {
+	if c == nil {
+		return nil
+	}
+	return c.rdb
+}

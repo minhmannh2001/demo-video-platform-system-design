@@ -11,6 +11,9 @@ import (
 	"strings"
 
 	"github.com/elastic/go-elasticsearch/v8/esapi"
+	"go.opentelemetry.io/otel/attribute"
+
+	"video-platform/demo/internal/tracing"
 )
 
 const (
@@ -35,7 +38,7 @@ type SearchPublishedResult struct {
 
 // SearchPublishedVideos runs multi_match on title (boosted) and description, filtered to
 // public visibility and ready encoding status. Does not access MongoDB.
-func (c *Client) SearchPublishedVideos(ctx context.Context, q string, from, size int, withHighlight bool) (*SearchPublishedResult, error) {
+func (c *Client) SearchPublishedVideos(ctx context.Context, q string, from, size int, withHighlight bool) (res *SearchPublishedResult, err error) {
 	q = strings.TrimSpace(q)
 	if q == "" {
 		return nil, fmt.Errorf("esclient: empty search query")
@@ -49,6 +52,13 @@ func (c *Client) SearchPublishedVideos(ctx context.Context, q string, from, size
 	if size > maxSearchSize {
 		size = maxSearchSize
 	}
+
+	ctx, sp := tracing.Start(ctx, "elasticsearch.search",
+		attribute.String("db.system", "elasticsearch"),
+		attribute.String("elasticsearch.operation", "search"),
+		attribute.String("elasticsearch.index", c.index),
+	)
+	defer func() { tracing.Finish(sp, err) }()
 
 	body := map[string]interface{}{
 		"query": map[string]interface{}{
@@ -85,7 +95,7 @@ func (c *Client) SearchPublishedVideos(ctx context.Context, q string, from, size
 		return nil, err
 	}
 
-	res, err := esapi.SearchRequest{
+	esRes, err := esapi.SearchRequest{
 		Index: []string{c.index},
 		Body:  bytes.NewReader(buf.Bytes()),
 	}.Do(ctx, c.es)
@@ -93,17 +103,18 @@ func (c *Client) SearchPublishedVideos(ctx context.Context, q string, from, size
 		slog.ErrorContext(ctx, "elasticsearch_search_request_failed", "index", c.index, "error", err)
 		return nil, fmt.Errorf("esclient: search request: %w", err)
 	}
-	defer res.Body.Close()
-	raw, err := io.ReadAll(res.Body)
+	defer esRes.Body.Close()
+	raw, err := io.ReadAll(esRes.Body)
 	if err != nil {
 		return nil, err
 	}
-	if res.IsError() {
-		slog.ErrorContext(ctx, "elasticsearch_search_error", "index", c.index, "status", res.StatusCode, "body", string(raw))
-		return nil, fmt.Errorf("esclient: search %s: %s", res.Status(), string(raw))
+	if esRes.IsError() {
+		slog.ErrorContext(ctx, "elasticsearch_search_error", "index", c.index, "status", esRes.StatusCode, "body", string(raw))
+		return nil, fmt.Errorf("esclient: search %s: %s", esRes.Status(), string(raw))
 	}
 
-	return parseSearchPublishedResponse(raw, from, size)
+	res, err = parseSearchPublishedResponse(raw, from, size)
+	return res, err
 }
 
 func parseSearchPublishedResponse(raw []byte, from, size int) (*SearchPublishedResult, error) {

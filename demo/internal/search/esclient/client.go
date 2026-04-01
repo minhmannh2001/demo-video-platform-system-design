@@ -16,6 +16,9 @@ import (
 
 	"video-platform/demo/internal/config"
 	"video-platform/demo/internal/search"
+	"video-platform/demo/internal/tracing"
+
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // NewFromAppConfig builds a client from [config.Config] (ELASTICSEARCH_* env vars).
@@ -81,6 +84,15 @@ func (c *Client) UpsertVideo(ctx context.Context, doc *search.VideoSearchDoc) er
 	if err := json.NewEncoder(&buf).Encode(doc); err != nil {
 		return fmt.Errorf("esclient: encode document: %w", err)
 	}
+	ctx, sp := tracing.Start(ctx, "elasticsearch.index",
+		attribute.String("db.system", "elasticsearch"),
+		attribute.String("elasticsearch.operation", "index"),
+		attribute.String("elasticsearch.index", c.index),
+		attribute.String("video.id", doc.VideoID),
+	)
+	var err error
+	defer func() { tracing.Finish(sp, err) }()
+
 	req := esapi.IndexRequest{
 		Index:      c.index,
 		DocumentID: doc.VideoID,
@@ -94,7 +106,8 @@ func (c *Client) UpsertVideo(ctx context.Context, doc *search.VideoSearchDoc) er
 			"video_id", doc.VideoID,
 			"error", err,
 		)
-		return fmt.Errorf("esclient: index request: %w", err)
+		err = fmt.Errorf("esclient: index request: %w", err)
+		return err
 	}
 	defer res.Body.Close()
 	if res.IsError() {
@@ -105,7 +118,8 @@ func (c *Client) UpsertVideo(ctx context.Context, doc *search.VideoSearchDoc) er
 			"status", res.StatusCode,
 			"body", string(b),
 		)
-		return fmt.Errorf("esclient: index %s: %s", res.Status(), string(b))
+		err = fmt.Errorf("esclient: index %s: %s", res.Status(), string(b))
+		return err
 	}
 	return nil
 }
@@ -115,6 +129,15 @@ func (c *Client) DeleteVideo(ctx context.Context, videoID string) error {
 	if videoID == "" {
 		return errors.New("esclient: empty video_id")
 	}
+	ctx, sp := tracing.Start(ctx, "elasticsearch.delete",
+		attribute.String("db.system", "elasticsearch"),
+		attribute.String("elasticsearch.operation", "delete"),
+		attribute.String("elasticsearch.index", c.index),
+		attribute.String("video.id", videoID),
+	)
+	var err error
+	defer func() { tracing.Finish(sp, err) }()
+
 	req := esapi.DeleteRequest{
 		Index:      c.index,
 		DocumentID: videoID,
@@ -127,7 +150,8 @@ func (c *Client) DeleteVideo(ctx context.Context, videoID string) error {
 			"video_id", videoID,
 			"error", err,
 		)
-		return fmt.Errorf("esclient: delete request: %w", err)
+		err = fmt.Errorf("esclient: delete request: %w", err)
+		return err
 	}
 	defer res.Body.Close()
 	if res.StatusCode == http.StatusNotFound {
@@ -141,16 +165,25 @@ func (c *Client) DeleteVideo(ctx context.Context, videoID string) error {
 			"status", res.StatusCode,
 			"body", string(b),
 		)
-		return fmt.Errorf("esclient: delete %s: %s", res.Status(), string(b))
+		err = fmt.Errorf("esclient: delete %s: %s", res.Status(), string(b))
+		return err
 	}
 	return nil
 }
 
 // GetVideoSource fetches _source for a video id (for tests and diagnostics).
-func (c *Client) GetVideoSource(ctx context.Context, videoID string) (json.RawMessage, bool, error) {
+func (c *Client) GetVideoSource(ctx context.Context, videoID string) (_ json.RawMessage, _ bool, err error) {
 	if videoID == "" {
 		return nil, false, errors.New("esclient: empty video_id")
 	}
+	ctx, sp := tracing.Start(ctx, "elasticsearch.get",
+		attribute.String("db.system", "elasticsearch"),
+		attribute.String("elasticsearch.operation", "get"),
+		attribute.String("elasticsearch.index", c.index),
+		attribute.String("video.id", videoID),
+	)
+	defer func() { tracing.Finish(sp, err) }()
+
 	req := esapi.GetRequest{
 		Index:      c.index,
 		DocumentID: videoID,
@@ -171,13 +204,15 @@ func (c *Client) GetVideoSource(ctx context.Context, videoID string) (json.RawMe
 			"status", res.StatusCode,
 			"body", string(b),
 		)
-		return nil, false, fmt.Errorf("esclient: get %s: %s", res.Status(), string(b))
+		err = fmt.Errorf("esclient: get %s: %s", res.Status(), string(b))
+		return nil, false, err
 	}
 	var wrap struct {
 		Source json.RawMessage `json:"_source"`
 	}
-	if err := json.NewDecoder(res.Body).Decode(&wrap); err != nil {
-		return nil, false, fmt.Errorf("esclient: decode get response: %w", err)
+	if decErr := json.NewDecoder(res.Body).Decode(&wrap); decErr != nil {
+		err = fmt.Errorf("esclient: decode get response: %w", decErr)
+		return nil, false, err
 	}
 	return wrap.Source, true, nil
 }

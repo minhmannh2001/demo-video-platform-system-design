@@ -86,6 +86,13 @@ func main() {
 	var videoSearch handlers.VideoSearch
 	if esCli, err := esclient.NewFromAppConfig(cfg); err != nil {
 		slog.Warn("elasticsearch unavailable; GET /videos/search returns 503", "error", err)
+	} else if cfg.SearchCacheTTLSec > 0 {
+		videoSearch = cache.NewCachedPublishedSearch(
+			esCli,
+			redisCache.Redis(),
+			time.Duration(cfg.SearchCacheTTLSec)*time.Second,
+			cfg.ElasticsearchIndexVideos,
+		)
 	} else {
 		videoSearch = esCli
 	}

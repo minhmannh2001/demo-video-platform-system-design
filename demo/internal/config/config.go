@@ -26,8 +26,10 @@ type Config struct {
 	MongoDB                  string
 	RedisAddr                string
 	RedisTTL                 time.Duration
-	CORSOrigins              []string
-	PublicBaseURL            string
+	// SearchCacheTTLSec is Redis TTL for GET /videos/search responses (seconds). 0 disables search caching.
+	SearchCacheTTLSec int
+	CORSOrigins       []string
+	PublicBaseURL     string
 }
 
 func Load() Config {
@@ -44,6 +46,7 @@ func Load() Config {
 		cors = []string{"http://localhost:5173", "http://127.0.0.1:5173"}
 	}
 	esIndex := getenv("ELASTICSEARCH_INDEX_VIDEOS", "videos")
+	searchCacheTTL := parseSearchCacheTTLSec(strings.TrimSpace(os.Getenv("REDIS_SEARCH_CACHE_TTL_SEC")))
 	return Config{
 		HTTPAddr:                 getenv("HTTP_ADDR", ":8080"),
 		ElasticsearchURL:         strings.TrimSpace(os.Getenv("ELASTICSEARCH_URL")),
@@ -62,6 +65,7 @@ func Load() Config {
 		MongoDB:                  getenv("MONGODB_DB", "video_demo"),
 		RedisAddr:                getenv("REDIS_ADDR", "localhost:6379"),
 		RedisTTL:                 time.Duration(ttlSec) * time.Second,
+		SearchCacheTTLSec:        searchCacheTTL,
 		CORSOrigins:              cors,
 		PublicBaseURL:            strings.TrimRight(getenv("PUBLIC_BASE_URL", "http://localhost:8080"), "/"),
 	}
@@ -86,6 +90,25 @@ func getenv(k, def string) string {
 		return v
 	}
 	return def
+}
+
+// parseSearchCacheTTLSec parses REDIS_SEARCH_CACHE_TTL_SEC: empty → 60; invalid/negative → 60; 0 → disabled (no cache).
+func parseSearchCacheTTLSec(s string) int {
+	if s == "" {
+		return 60
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 0 {
+		return 60
+	}
+	if n == 0 {
+		return 0
+	}
+	const maxSearchCacheTTL = 3600
+	if n > maxSearchCacheTTL {
+		return maxSearchCacheTTL
+	}
+	return n
 }
 
 // parsePositiveIntOr parses s as base-10 int; if empty, invalid, or negative, returns def.

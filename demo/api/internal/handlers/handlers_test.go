@@ -643,4 +643,5 @@ var (
 	_ VideoRepository = (*store.VideoStore)(nil)
 	_ VideoCacher     = (*cache.VideoCache)(nil)
 	_ VideoSearch     = (*esclient.Client)(nil)
+	_ VideoSearch     = (*cache.CachedPublishedSearch)(nil)
 )
