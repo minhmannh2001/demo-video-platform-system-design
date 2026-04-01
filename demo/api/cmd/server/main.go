@@ -14,6 +14,7 @@ import (
 	"video-platform/demo/internal/awsclient"
 	"video-platform/demo/internal/cache"
 	"video-platform/demo/internal/config"
+	"video-platform/demo/internal/search/esclient"
 	"video-platform/demo/internal/store"
 	"video-platform/demo/internal/tracing"
 	"video-platform/demo/internal/videometaqueue"
@@ -82,7 +83,14 @@ func main() {
 		metaPub = videometaqueue.NewSQSPublisher(awsCli.SQS, metaQueueURL)
 	}
 
-	h := handlers.New(cfg, awsCli.S3, awsCli.SQS, queueURL, metaQueueURL, videoStore, redisCache, metaPub)
+	var videoSearch handlers.VideoSearch
+	if esCli, err := esclient.NewFromAppConfig(cfg); err != nil {
+		slog.Warn("elasticsearch unavailable; GET /videos/search returns 503", "error", err)
+	} else {
+		videoSearch = esCli
+	}
+
+	h := handlers.New(cfg, awsCli.S3, awsCli.SQS, queueURL, metaQueueURL, videoStore, redisCache, metaPub, videoSearch)
 
 	root := chi.NewRouter()
 	root.Use(handlers.RequestLogMiddleware())

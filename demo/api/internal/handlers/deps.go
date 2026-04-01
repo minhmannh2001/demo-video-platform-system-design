@@ -4,10 +4,16 @@ import (
 	"context"
 
 	"video-platform/demo/internal/models"
+	"video-platform/demo/internal/search/esclient"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 )
+
+// VideoSearch runs catalog search in Elasticsearch only (no Mongo on the hot path).
+type VideoSearch interface {
+	SearchPublishedVideos(ctx context.Context, q string, from, size int, highlight bool) (*esclient.SearchPublishedResult, error)
+}
 
 // S3API is satisfied by *s3.Client (Put/Get/List for Warmup).
 type S3API interface {

@@ -16,6 +16,7 @@ import (
 	"video-platform/demo/internal/cache"
 	"video-platform/demo/internal/config"
 	"video-platform/demo/internal/models"
+	"video-platform/demo/internal/search/esclient"
 	"video-platform/demo/internal/store"
 	"video-platform/demo/internal/videometaqueue"
 
@@ -114,6 +115,18 @@ type recordingMetaPub struct {
 func (r *recordingMetaPub) Publish(ctx context.Context, ev videometaqueue.Event) error {
 	r.events = append(r.events, ev)
 	return nil
+}
+
+type fakeVideoSearch struct {
+	result *esclient.SearchPublishedResult
+	err    error
+}
+
+func (f *fakeVideoSearch) SearchPublishedVideos(ctx context.Context, q string, from, size int, withHighlight bool) (*esclient.SearchPublishedResult, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.result, nil
 }
 
 type fakeStore struct {
@@ -217,7 +230,7 @@ func (h *hitCache) Set(ctx context.Context, v *models.Video) error { return nil 
 func (h *hitCache) Del(ctx context.Context, id string) error { return nil }
 
 func TestUpload_validation(t *testing.T) {
-	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "http://q", "", &fakeStore{}, nil, nil)
+	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "http://q", "", &fakeStore{}, nil, nil, nil)
 	srv := httptest.NewServer(h.Routes())
 	t.Cleanup(srv.Close)
 
@@ -236,7 +249,7 @@ func TestUpload_success(t *testing.T) {
 	sqsf := &fakeSQS{}
 	st := &fakeStore{}
 	meta := &recordingMetaPub{}
-	h := New(testCfg(), s3f, sqsf, "http://queue", "http://meta-q", st, nil, meta)
+	h := New(testCfg(), s3f, sqsf, "http://queue", "http://meta-q", st, nil, meta, nil)
 	srv := httptest.NewServer(h.Routes())
 	t.Cleanup(srv.Close)
 
@@ -295,7 +308,7 @@ func TestUpload_success(t *testing.T) {
 }
 
 func TestListVideos_empty(t *testing.T) {
-	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", "", &fakeStore{byID: map[string]*models.Video{}}, nil, nil)
+	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", "", &fakeStore{byID: map[string]*models.Video{}}, nil, nil, nil)
 	srv := httptest.NewServer(h.Routes())
 	t.Cleanup(srv.Close)
 	resp, err := http.Get(srv.URL + "/videos")
@@ -321,7 +334,7 @@ func TestPatchVideo_success(t *testing.T) {
 		id: {ID: id, Title: "old", Description: "d", Status: models.StatusReady},
 	}}
 	meta := &recordingMetaPub{}
-	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", "meta", st, nil, meta)
+	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", "meta", st, nil, meta, nil)
 	srv := httptest.NewServer(h.Routes())
 	t.Cleanup(srv.Close)
 
@@ -352,7 +365,7 @@ func TestPatchVideo_success(t *testing.T) {
 func TestGetVideo_cacheHit(t *testing.T) {
 	id := "507f1f77bcf86cd799439011"
 	v := &models.Video{ID: id, Title: "cached", Status: models.StatusReady}
-	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", "", &fakeStore{}, &hitCache{v: v}, nil)
+	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", "", &fakeStore{}, &hitCache{v: v}, nil, nil)
 	srv := httptest.NewServer(h.Routes())
 	t.Cleanup(srv.Close)
 	resp, err := http.Get(srv.URL + "/videos/" + id)
@@ -368,7 +381,7 @@ func TestGetVideo_cacheHit(t *testing.T) {
 }
 
 func TestGetVideo_notFound(t *testing.T) {
-	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", "", &fakeStore{byID: map[string]*models.Video{}}, nil, nil)
+	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", "", &fakeStore{byID: map[string]*models.Video{}}, nil, nil, nil)
 	srv := httptest.NewServer(h.Routes())
 	t.Cleanup(srv.Close)
 	resp, err := http.Get(srv.URL + "/videos/507f1f77bcf86cd799439011")
@@ -386,7 +399,7 @@ func TestWatch_ready(t *testing.T) {
 	st := &fakeStore{byID: map[string]*models.Video{
 		id: {ID: id, Status: models.StatusReady},
 	}}
-	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", "", st, nil, nil)
+	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", "", st, nil, nil, nil)
 	srv := httptest.NewServer(h.Routes())
 	t.Cleanup(srv.Close)
 	resp, err := http.Get(srv.URL + "/videos/" + id + "/watch")
@@ -418,7 +431,7 @@ func TestDeleteVideo_success(t *testing.T) {
 		},
 	}}
 	meta := &recordingMetaPub{}
-	h := New(testCfg(), s3f, &fakeSQS{}, "q", "http://meta-q", st, nil, meta)
+	h := New(testCfg(), s3f, &fakeSQS{}, "q", "http://meta-q", st, nil, meta, nil)
 	srv := httptest.NewServer(h.Routes())
 	t.Cleanup(srv.Close)
 
@@ -445,7 +458,7 @@ func TestDeleteVideo_success(t *testing.T) {
 
 func TestDeleteVideo_notFound(t *testing.T) {
 	id := "507f1f77bcf86cd799439011"
-	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", "", &fakeStore{byID: map[string]*models.Video{}}, nil, nil)
+	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", "", &fakeStore{byID: map[string]*models.Video{}}, nil, nil, nil)
 	srv := httptest.NewServer(h.Routes())
 	t.Cleanup(srv.Close)
 	req, _ := http.NewRequest(http.MethodDelete, srv.URL+"/videos/"+id, nil)
@@ -460,7 +473,7 @@ func TestDeleteVideo_notFound(t *testing.T) {
 }
 
 func TestDeleteVideo_invalidID(t *testing.T) {
-	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", "", &fakeStore{}, nil, nil)
+	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", "", &fakeStore{}, nil, nil, nil)
 	srv := httptest.NewServer(h.Routes())
 	t.Cleanup(srv.Close)
 	req, _ := http.NewRequest(http.MethodDelete, srv.URL+"/videos/not-a-valid-objectid", nil)
@@ -478,7 +491,7 @@ func TestStreamObject_success(t *testing.T) {
 	id := "507f1f77bcf86cd799439011"
 	key := "videos/" + id + "/hls/master.m3u8"
 	s3f := &fakeS3{objects: map[string][]byte{key: []byte("#EXTM3U\n")}}
-	h := New(testCfg(), s3f, &fakeSQS{}, "q", "", &fakeStore{}, nil, nil)
+	h := New(testCfg(), s3f, &fakeSQS{}, "q", "", &fakeStore{}, nil, nil, nil)
 	srv := httptest.NewServer(h.Routes())
 	t.Cleanup(srv.Close)
 	resp, err := http.Get(srv.URL + "/stream/" + id + "/master.m3u8")
@@ -496,7 +509,7 @@ func TestStreamObject_success(t *testing.T) {
 
 func TestStreamObject_invalidPath(t *testing.T) {
 	id := "507f1f77bcf86cd799439011"
-	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", "", &fakeStore{}, nil, nil)
+	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", "", &fakeStore{}, nil, nil, nil)
 	srv := httptest.NewServer(h.Routes())
 	t.Cleanup(srv.Close)
 	resp, err := http.Get(srv.URL + "/stream/" + id + "/../x")
@@ -563,7 +576,7 @@ func TestCORSMiddleware(t *testing.T) {
 }
 
 func TestHealth(t *testing.T) {
-	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", "", &fakeStore{}, nil, nil)
+	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", "", &fakeStore{}, nil, nil, nil)
 	srv := httptest.NewServer(h.Routes())
 	t.Cleanup(srv.Close)
 	resp, err := http.Get(srv.URL + "/health")
@@ -576,8 +589,58 @@ func TestHealth(t *testing.T) {
 	}
 }
 
+func TestSearchVideos_unavailable(t *testing.T) {
+	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", "", &fakeStore{}, nil, nil, nil)
+	req := httptest.NewRequest(http.MethodGet, "/videos/search?q=foo", nil)
+	rec := httptest.NewRecorder()
+	h.Routes().ServeHTTP(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status %d, want 503", rec.Code)
+	}
+}
+
+func TestSearchVideos_missingQuery(t *testing.T) {
+	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", "", &fakeStore{}, nil, nil, &fakeVideoSearch{})
+	req := httptest.NewRequest(http.MethodGet, "/videos/search", nil)
+	rec := httptest.NewRecorder()
+	h.Routes().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, want 400", rec.Code)
+	}
+}
+
+func TestSearchVideos_ok(t *testing.T) {
+	score := 12.5
+	want := &esclient.SearchPublishedResult{
+		Total: 1,
+		From:  0,
+		Size:  20,
+		Hits: []esclient.SearchPublishedHit{
+			{VideoID: "vid-1", Score: &score},
+		},
+	}
+	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", "", &fakeStore{}, nil, nil, &fakeVideoSearch{result: want})
+	req := httptest.NewRequest(http.MethodGet, "/videos/search?q=hello&from=0&size=20", nil)
+	rec := httptest.NewRecorder()
+	h.Routes().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d, want 200", rec.Code)
+	}
+	var got esclient.SearchPublishedResult
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Total != want.Total || len(got.Hits) != 1 || got.Hits[0].VideoID != "vid-1" {
+		t.Fatalf("body mismatch: %+v", got)
+	}
+	if got.Hits[0].Score == nil || *got.Hits[0].Score != score {
+		t.Fatalf("score = %v, want %v", got.Hits[0].Score, score)
+	}
+}
+
 // Compile-time: production types satisfy handler interfaces.
 var (
 	_ VideoRepository = (*store.VideoStore)(nil)
 	_ VideoCacher     = (*cache.VideoCache)(nil)
+	_ VideoSearch     = (*esclient.Client)(nil)
 )

@@ -13,6 +13,7 @@ import (
 
 	"video-platform/demo/internal/config"
 	"video-platform/demo/internal/models"
+	"video-platform/demo/internal/search/esclient"
 	"video-platform/demo/internal/store"
 	"video-platform/demo/internal/streamutil"
 	"video-platform/demo/internal/tracing"
@@ -36,11 +37,13 @@ type Handler struct {
 	metadataPublisher  videometaqueue.Publisher
 	videos             VideoRepository
 	videoCache         VideoCacher
+	videoSearch        VideoSearch
 }
 
 // New wires HTTP handlers with concrete AWS/Mongo/Redis clients from main.
 // metadataPublisher may be nil; it is treated as videometaqueue.Noop.
-func New(cfg config.Config, s3cli S3API, sqscli SQSAPI, encodeQueueURL, metadataQueueURL string, videos VideoRepository, vc VideoCacher, metadataPublisher videometaqueue.Publisher) *Handler {
+// videoSearch may be nil; GET /videos/search returns 503 when unset.
+func New(cfg config.Config, s3cli S3API, sqscli SQSAPI, encodeQueueURL, metadataQueueURL string, videos VideoRepository, vc VideoCacher, metadataPublisher videometaqueue.Publisher, videoSearch VideoSearch) *Handler {
 	if metadataPublisher == nil {
 		metadataPublisher = videometaqueue.Noop{}
 	}
@@ -53,6 +56,7 @@ func New(cfg config.Config, s3cli S3API, sqscli SQSAPI, encodeQueueURL, metadata
 		metadataPublisher: metadataPublisher,
 		videos:            videos,
 		videoCache:        vc,
+		videoSearch:       videoSearch,
 	}
 }
 
@@ -84,6 +88,7 @@ func (h *Handler) publishVideoMetadata(ctx context.Context, ev videometaqueue.Ev
 func (h *Handler) Routes() chi.Router {
 	r := chi.NewRouter()
 	r.Post("/videos/upload", h.Upload)
+	r.Get("/videos/search", h.SearchVideos)
 	r.Get("/videos", h.ListVideos)
 	r.Get("/videos/{id}", h.GetVideo)
 	r.Patch("/videos/{id}", h.PatchVideo)
@@ -95,6 +100,44 @@ func (h *Handler) Routes() chi.Router {
 		_, _ = w.Write([]byte("ok"))
 	})
 	return r
+}
+
+// SearchVideos handles GET /videos/search?q=... (Elasticsearch only; no Mongo).
+func (h *Handler) SearchVideos(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	if h.videoSearch == nil {
+		http.Error(w, "search unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	if q == "" {
+		http.Error(w, "q query parameter required", http.StatusBadRequest)
+		return
+	}
+	from, size := esclient.ParseSearchPagination(r.URL.Query().Get("from"), r.URL.Query().Get("size"))
+	highlight := strings.EqualFold(r.URL.Query().Get("highlight"), "true") ||
+		r.URL.Query().Get("highlight") == "1"
+
+	ctx, sp := tracing.Start(ctx, "elasticsearch.search",
+		attribute.String("db.system", "elasticsearch"),
+		attribute.String("elasticsearch.operation", "search"),
+	)
+	result, err := h.videoSearch.SearchPublishedVideos(ctx, q, from, size, highlight)
+	tracing.Finish(sp, err)
+	if err != nil {
+		slog.ErrorContext(ctx, "video_search_failed", "error", err, "q", q)
+		http.Error(w, "search failed", http.StatusBadGateway)
+		return
+	}
+	slog.InfoContext(ctx, "video_search",
+		"q", q,
+		"total", result.Total,
+		"returned", len(result.Hits),
+		"from", result.From,
+		"size", result.Size,
+	)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(result)
 }
 
 func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
