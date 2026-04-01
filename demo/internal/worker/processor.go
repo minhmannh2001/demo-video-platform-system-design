@@ -11,10 +11,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"video-platform/demo/internal/models"
 	"video-platform/demo/internal/streamutil"
 	"video-platform/demo/internal/tracing"
+	"video-platform/demo/internal/videometaqueue"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -58,6 +60,9 @@ type Deps struct {
 	Encoder         Encoder
 	Cache           CacheInvalidator
 	TempDirParent   string
+	// MetadataPublisher notifies search-index consumers when encoding status changes; nil disables.
+	MetadataPublisher videometaqueue.Publisher
+	MetadataQueueURL  string
 }
 
 // Processor handles one encode job per HandleMessage call.
@@ -174,6 +179,7 @@ func (p *Processor) processVideo(ctx context.Context, id string) error {
 		}
 	}
 	slog.InfoContext(ctx, "video_mark_ready", "video_id", id, "encoded_prefix", prefix)
+	p.publishMetadataStatusChange(ctx, id)
 
 	if p.d.Cache != nil {
 		c, sp := tracing.Start(ctx, "redis.video.del",
@@ -197,6 +203,36 @@ func (p *Processor) markFailed(ctx context.Context, id string) {
 	)
 	err := p.d.Store.MarkFailed(c, id)
 	tracing.Finish(sp, err)
+	p.publishMetadataStatusChange(ctx, id)
+}
+
+func (p *Processor) publishMetadataStatusChange(ctx context.Context, videoID string) {
+	pub := p.d.MetadataPublisher
+	if pub == nil {
+		return
+	}
+	ev := videometaqueue.NewEvent(videoID, videometaqueue.OpUpdated, time.Now().UTC())
+	c, sp := tracing.Start(ctx, "sqs.SendMessage",
+		attribute.String("messaging.system", "aws_sqs"),
+		attribute.String("messaging.destination.name", p.d.MetadataQueueURL),
+		attribute.String("videometa.op", ev.Op),
+		attribute.String("video.id", videoID),
+	)
+	err := pub.Publish(c, ev)
+	tracing.Finish(sp, err)
+	if err != nil {
+		slog.ErrorContext(ctx, "metadata_index_enqueue_failed",
+			"error", err,
+			"video_id", videoID,
+			"op", videometaqueue.OpUpdated,
+		)
+		return
+	}
+	slog.InfoContext(ctx, "metadata_index_enqueued",
+		"video_id", videoID,
+		"op", videometaqueue.OpUpdated,
+		"schema_version", ev.SchemaVersion,
+	)
 }
 
 func (p *Processor) downloadRaw(ctx context.Context, rawKey, destPath string) error {

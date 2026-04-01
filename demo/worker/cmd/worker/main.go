@@ -15,6 +15,7 @@ import (
 	"video-platform/demo/internal/config"
 	"video-platform/demo/internal/store"
 	"video-platform/demo/internal/tracing"
+	"video-platform/demo/internal/videometaqueue"
 	"video-platform/demo/internal/worker"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -71,14 +72,24 @@ func main() {
 		os.Exit(1)
 	}
 
+	metaQueueURL, metaErr := awsclient.ResolveMetadataQueueURL(ctx, awsCli.SQS, cfg)
+	var metaPub videometaqueue.Publisher
+	if metaErr != nil {
+		slog.Warn("metadata sqs queue unavailable; worker will not emit search index events", "error", metaErr)
+	} else {
+		metaPub = videometaqueue.NewSQSPublisher(awsCli.SQS, metaQueueURL)
+	}
+
 	proc := worker.NewProcessor(worker.Deps{
-		S3:            awsCli.S3,
-		RawBucket:     cfg.S3RawBucket,
-		EncodedBucket: cfg.S3EncodedBucket,
-		Store:         videoStore,
-		Encoder:       worker.FFmpegEncoder{},
-		Cache:         redisCache,
-		TempDirParent: os.TempDir(),
+		S3:                 awsCli.S3,
+		RawBucket:          cfg.S3RawBucket,
+		EncodedBucket:      cfg.S3EncodedBucket,
+		Store:              videoStore,
+		Encoder:            worker.FFmpegEncoder{},
+		Cache:              redisCache,
+		TempDirParent:      os.TempDir(),
+		MetadataPublisher:  metaPub,
+		MetadataQueueURL:   metaQueueURL,
 	})
 
 	runCtx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

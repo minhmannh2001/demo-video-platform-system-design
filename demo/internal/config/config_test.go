@@ -40,6 +40,9 @@ func TestLoad_defaults(t *testing.T) {
 	if c.SQSEncodeQueue != "" {
 		t.Fatalf("SQSEncodeQueue: want empty when unset, got %q", c.SQSEncodeQueue)
 	}
+	if c.SQSMetadataQueue != "" {
+		t.Fatalf("SQSMetadataQueue: want empty when unset, got %q", c.SQSMetadataQueue)
+	}
 	if c.ElasticsearchURL != "" || c.ElasticsearchUsername != "" || c.ElasticsearchPassword != "" {
 		t.Fatalf("Elasticsearch: want empty when unset")
 	}
@@ -58,6 +61,7 @@ func TestLoad_overrides(t *testing.T) {
 	t.Setenv("S3_RAW_BUCKET", "raw-b")
 	t.Setenv("S3_ENCODED_BUCKET", "enc-b")
 	t.Setenv("SQS_ENCODE_QUEUE_URL", "http://sqs/queue")
+	t.Setenv("SQS_VIDEO_METADATA_QUEUE_URL", "http://sqs/meta")
 	t.Setenv("MONGODB_URI", "mongodb://mongo:27017")
 	t.Setenv("MONGODB_DB", "app")
 	t.Setenv("REDIS_ADDR", "redis:6379")
@@ -84,6 +88,9 @@ func TestLoad_overrides(t *testing.T) {
 	}
 	if c.SQSEncodeQueue != "http://sqs/queue" {
 		t.Fatalf("SQS: %q", c.SQSEncodeQueue)
+	}
+	if c.SQSMetadataQueue != "http://sqs/meta" {
+		t.Fatalf("SQSMetadataQueue: %q", c.SQSMetadataQueue)
 	}
 	if c.MongoURI != "mongodb://mongo:27017" || c.MongoDB != "app" {
 		t.Fatalf("Mongo")
@@ -143,7 +150,7 @@ func clearDemoEnv(t *testing.T) {
 	t.Helper()
 	keys := []string{
 		"HTTP_ADDR", "AWS_REGION", "AWS_ENDPOINT_URL", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY",
-		"S3_RAW_BUCKET", "S3_ENCODED_BUCKET", "SQS_ENCODE_QUEUE_URL",
+		"S3_RAW_BUCKET", "S3_ENCODED_BUCKET", "SQS_ENCODE_QUEUE_URL", "SQS_VIDEO_METADATA_QUEUE_URL",
 		"MONGODB_URI", "MONGODB_DB", "REDIS_ADDR", "REDIS_CACHE_TTL_SEC",
 		"CORS_ORIGINS", "PUBLIC_BASE_URL",
 		"ELASTICSEARCH_URL", "ELASTICSEARCH_USERNAME", "ELASTICSEARCH_PASSWORD", "ELASTICSEARCH_INDEX_VIDEOS",

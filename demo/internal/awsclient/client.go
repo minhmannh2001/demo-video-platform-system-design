@@ -50,3 +50,16 @@ func ResolveQueueURL(ctx context.Context, sqsClient SQSQueueURLResolver, cfg con
 	}
 	return aws.ToString(out.QueueUrl), nil
 }
+
+// ResolveMetadataQueueURL returns the URL for search-index metadata events.
+// If SQS_VIDEO_METADATA_QUEUE_URL is set in config, it wins; otherwise resolves by queue name video-metadata-index.
+func ResolveMetadataQueueURL(ctx context.Context, sqsClient SQSQueueURLResolver, cfg config.Config) (string, error) {
+	if cfg.SQSMetadataQueue != "" {
+		return cfg.SQSMetadataQueue, nil
+	}
+	out, err := sqsClient.GetQueueUrl(ctx, &sqs.GetQueueUrlInput{QueueName: aws.String("video-metadata-index")})
+	if err != nil {
+		return "", fmt.Errorf("get metadata queue url: %w", err)
+	}
+	return aws.ToString(out.QueueUrl), nil
+}

@@ -21,6 +21,7 @@ type Config struct {
 	S3RawBucket              string
 	S3EncodedBucket          string
 	SQSEncodeQueue           string
+	SQSMetadataQueue         string
 	MongoURI                 string
 	MongoDB                  string
 	RedisAddr                string
@@ -56,6 +57,7 @@ func Load() Config {
 		S3RawBucket:              getenv("S3_RAW_BUCKET", "video-raw"),
 		S3EncodedBucket:          getenv("S3_ENCODED_BUCKET", "video-encoded"),
 		SQSEncodeQueue:           os.Getenv("SQS_ENCODE_QUEUE_URL"),
+		SQSMetadataQueue:         strings.TrimSpace(os.Getenv("SQS_VIDEO_METADATA_QUEUE_URL")),
 		MongoURI:                 getenv("MONGODB_URI", "mongodb://localhost:27017"),
 		MongoDB:                  getenv("MONGODB_DB", "video_demo"),
 		RedisAddr:                getenv("REDIS_ADDR", "localhost:6379"),

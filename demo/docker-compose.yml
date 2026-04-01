@@ -7,6 +7,7 @@ x-api-worker-env: &api-worker-env
   S3_RAW_BUCKET: video-raw
   S3_ENCODED_BUCKET: video-encoded
   SQS_ENCODE_QUEUE_URL: http://localstack:4566/000000000000/video-encode-jobs
+  SQS_VIDEO_METADATA_QUEUE_URL: http://localstack:4566/000000000000/video-metadata-index
   MONGODB_URI: mongodb://mongodb:27017
   MONGODB_DB: video_demo
   REDIS_ADDR: redis:6379

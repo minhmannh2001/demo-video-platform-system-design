@@ -11,11 +11,13 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"video-platform/demo/internal/cache"
 	"video-platform/demo/internal/config"
 	"video-platform/demo/internal/models"
 	"video-platform/demo/internal/store"
+	"video-platform/demo/internal/videometaqueue"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -105,6 +107,15 @@ func (f *fakeSQS) SendMessage(ctx context.Context, in *sqs.SendMessageInput, _ .
 	return &sqs.SendMessageOutput{}, nil
 }
 
+type recordingMetaPub struct {
+	events []videometaqueue.Event
+}
+
+func (r *recordingMetaPub) Publish(ctx context.Context, ev videometaqueue.Event) error {
+	r.events = append(r.events, ev)
+	return nil
+}
+
 type fakeStore struct {
 	byID    map[string]*models.Video
 	createE error
@@ -118,6 +129,11 @@ func (f *fakeStore) Create(ctx context.Context, v *models.Video) error {
 	}
 	if f.byID == nil {
 		f.byID = make(map[string]*models.Video)
+	}
+	if v.CreatedAt.IsZero() {
+		now := time.Now().UTC()
+		v.CreatedAt = now
+		v.UpdatedAt = now
 	}
 	f.byID[v.ID] = v
 	return nil
@@ -177,7 +193,7 @@ func (h *hitCache) Set(ctx context.Context, v *models.Video) error { return nil 
 func (h *hitCache) Del(ctx context.Context, id string) error { return nil }
 
 func TestUpload_validation(t *testing.T) {
-	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "http://q", &fakeStore{}, nil)
+	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "http://q", "", &fakeStore{}, nil, nil)
 	srv := httptest.NewServer(h.Routes())
 	t.Cleanup(srv.Close)
 
@@ -195,7 +211,8 @@ func TestUpload_success(t *testing.T) {
 	s3f := &fakeS3{}
 	sqsf := &fakeSQS{}
 	st := &fakeStore{}
-	h := New(testCfg(), s3f, sqsf, "http://queue", st, nil)
+	meta := &recordingMetaPub{}
+	h := New(testCfg(), s3f, sqsf, "http://queue", "http://meta-q", st, nil, meta)
 	srv := httptest.NewServer(h.Routes())
 	t.Cleanup(srv.Close)
 
@@ -239,6 +256,9 @@ func TestUpload_success(t *testing.T) {
 	if err := json.Unmarshal(sqsf.bodies[0], &env); err != nil || env["video_id"] != out.ID {
 		t.Fatalf("sqs body: %s", sqsf.bodies[0])
 	}
+	if len(meta.events) != 1 || meta.events[0].VideoID != out.ID || meta.events[0].Op != videometaqueue.OpCreated {
+		t.Fatalf("metadata events: %+v", meta.events)
+	}
 	var found bool
 	for k := range s3f.objects {
 		if strings.Contains(k, out.ID) && strings.HasPrefix(k, "videos/") {
@@ -251,7 +271,7 @@ func TestUpload_success(t *testing.T) {
 }
 
 func TestListVideos_empty(t *testing.T) {
-	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", &fakeStore{byID: map[string]*models.Video{}}, nil)
+	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", "", &fakeStore{byID: map[string]*models.Video{}}, nil, nil)
 	srv := httptest.NewServer(h.Routes())
 	t.Cleanup(srv.Close)
 	resp, err := http.Get(srv.URL + "/videos")
@@ -274,7 +294,7 @@ func TestListVideos_empty(t *testing.T) {
 func TestGetVideo_cacheHit(t *testing.T) {
 	id := "507f1f77bcf86cd799439011"
 	v := &models.Video{ID: id, Title: "cached", Status: models.StatusReady}
-	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", &fakeStore{}, &hitCache{v: v})
+	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", "", &fakeStore{}, &hitCache{v: v}, nil)
 	srv := httptest.NewServer(h.Routes())
 	t.Cleanup(srv.Close)
 	resp, err := http.Get(srv.URL + "/videos/" + id)
@@ -290,7 +310,7 @@ func TestGetVideo_cacheHit(t *testing.T) {
 }
 
 func TestGetVideo_notFound(t *testing.T) {
-	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", &fakeStore{byID: map[string]*models.Video{}}, nil)
+	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", "", &fakeStore{byID: map[string]*models.Video{}}, nil, nil)
 	srv := httptest.NewServer(h.Routes())
 	t.Cleanup(srv.Close)
 	resp, err := http.Get(srv.URL + "/videos/507f1f77bcf86cd799439011")
@@ -308,7 +328,7 @@ func TestWatch_ready(t *testing.T) {
 	st := &fakeStore{byID: map[string]*models.Video{
 		id: {ID: id, Status: models.StatusReady},
 	}}
-	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", st, nil)
+	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", "", st, nil, nil)
 	srv := httptest.NewServer(h.Routes())
 	t.Cleanup(srv.Close)
 	resp, err := http.Get(srv.URL + "/videos/" + id + "/watch")
@@ -339,7 +359,8 @@ func TestDeleteVideo_success(t *testing.T) {
 			Status:        models.StatusReady,
 		},
 	}}
-	h := New(testCfg(), s3f, &fakeSQS{}, "q", st, nil)
+	meta := &recordingMetaPub{}
+	h := New(testCfg(), s3f, &fakeSQS{}, "q", "http://meta-q", st, nil, meta)
 	srv := httptest.NewServer(h.Routes())
 	t.Cleanup(srv.Close)
 
@@ -359,11 +380,14 @@ func TestDeleteVideo_success(t *testing.T) {
 	if len(s3f.objects) != 0 {
 		t.Fatalf("s3 should be empty, got %v", s3f.objects)
 	}
+	if len(meta.events) != 1 || meta.events[0].Op != videometaqueue.OpDeleted || meta.events[0].VideoID != id {
+		t.Fatalf("metadata events: %+v", meta.events)
+	}
 }
 
 func TestDeleteVideo_notFound(t *testing.T) {
 	id := "507f1f77bcf86cd799439011"
-	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", &fakeStore{byID: map[string]*models.Video{}}, nil)
+	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", "", &fakeStore{byID: map[string]*models.Video{}}, nil, nil)
 	srv := httptest.NewServer(h.Routes())
 	t.Cleanup(srv.Close)
 	req, _ := http.NewRequest(http.MethodDelete, srv.URL+"/videos/"+id, nil)
@@ -378,7 +402,7 @@ func TestDeleteVideo_notFound(t *testing.T) {
 }
 
 func TestDeleteVideo_invalidID(t *testing.T) {
-	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", &fakeStore{}, nil)
+	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", "", &fakeStore{}, nil, nil)
 	srv := httptest.NewServer(h.Routes())
 	t.Cleanup(srv.Close)
 	req, _ := http.NewRequest(http.MethodDelete, srv.URL+"/videos/not-a-valid-objectid", nil)
@@ -396,7 +420,7 @@ func TestStreamObject_success(t *testing.T) {
 	id := "507f1f77bcf86cd799439011"
 	key := "videos/" + id + "/hls/master.m3u8"
 	s3f := &fakeS3{objects: map[string][]byte{key: []byte("#EXTM3U\n")}}
-	h := New(testCfg(), s3f, &fakeSQS{}, "q", &fakeStore{}, nil)
+	h := New(testCfg(), s3f, &fakeSQS{}, "q", "", &fakeStore{}, nil, nil)
 	srv := httptest.NewServer(h.Routes())
 	t.Cleanup(srv.Close)
 	resp, err := http.Get(srv.URL + "/stream/" + id + "/master.m3u8")
@@ -414,7 +438,7 @@ func TestStreamObject_success(t *testing.T) {
 
 func TestStreamObject_invalidPath(t *testing.T) {
 	id := "507f1f77bcf86cd799439011"
-	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", &fakeStore{}, nil)
+	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", "", &fakeStore{}, nil, nil)
 	srv := httptest.NewServer(h.Routes())
 	t.Cleanup(srv.Close)
 	resp, err := http.Get(srv.URL + "/stream/" + id + "/../x")
@@ -481,7 +505,7 @@ func TestCORSMiddleware(t *testing.T) {
 }
 
 func TestHealth(t *testing.T) {
-	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", &fakeStore{}, nil)
+	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", "", &fakeStore{}, nil, nil)
 	srv := httptest.NewServer(h.Routes())
 	t.Cleanup(srv.Close)
 	resp, err := http.Get(srv.URL + "/health")

@@ -53,3 +53,21 @@ func TestResolveQueueURL_fetchesFromSQS(t *testing.T) {
 		t.Fatal("expected SQS GetQueueUrl")
 	}
 }
+
+func TestResolveMetadataQueueURL_usesConfigWhenSet(t *testing.T) {
+	cfg := config.Config{SQSMetadataQueue: "https://meta-queue"}
+	m := &mockSQS{}
+	u, err := ResolveMetadataQueueURL(context.Background(), m, cfg)
+	if err != nil || u != "https://meta-queue" || m.called {
+		t.Fatalf("got %q err=%v called=%v", u, err, m.called)
+	}
+}
+
+func TestResolveMetadataQueueURL_fetchesFromSQS(t *testing.T) {
+	cfg := config.Config{}
+	m := &mockSQS{url: "https://localstack/meta"}
+	u, err := ResolveMetadataQueueURL(context.Background(), m, cfg)
+	if err != nil || u != "https://localstack/meta" || !m.called {
+		t.Fatalf("got %q err=%v called=%v", u, err, m.called)
+	}
+}

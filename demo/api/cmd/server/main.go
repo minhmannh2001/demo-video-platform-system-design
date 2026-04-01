@@ -16,6 +16,7 @@ import (
 	"video-platform/demo/internal/config"
 	"video-platform/demo/internal/store"
 	"video-platform/demo/internal/tracing"
+	"video-platform/demo/internal/videometaqueue"
 
 	"github.com/go-chi/chi/v5"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
@@ -73,7 +74,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	h := handlers.New(cfg, awsCli.S3, awsCli.SQS, queueURL, videoStore, redisCache)
+	metaQueueURL, metaErr := awsclient.ResolveMetadataQueueURL(ctx, awsCli.SQS, cfg)
+	var metaPub videometaqueue.Publisher = videometaqueue.Noop{}
+	if metaErr != nil {
+		slog.Warn("metadata sqs queue unavailable; search index events disabled", "error", metaErr)
+	} else {
+		metaPub = videometaqueue.NewSQSPublisher(awsCli.SQS, metaQueueURL)
+	}
+
+	h := handlers.New(cfg, awsCli.S3, awsCli.SQS, queueURL, metaQueueURL, videoStore, redisCache, metaPub)
 
 	root := chi.NewRouter()
 	root.Use(handlers.RequestLogMiddleware())

@@ -27,8 +27,19 @@ if ! QUEUE_URL=$(aws --endpoint-url="${ENDPOINT}" sqs get-queue-url \
     --query 'QueueUrl')
 fi
 
+if ! META_QUEUE_URL=$(aws --endpoint-url="${ENDPOINT}" sqs get-queue-url \
+  --queue-name video-metadata-index \
+  --output text \
+  --query 'QueueUrl' 2>/dev/null); then
+  META_QUEUE_URL=$(aws --endpoint-url="${ENDPOINT}" sqs create-queue \
+    --queue-name video-metadata-index \
+    --output text \
+    --query 'QueueUrl')
+fi
+
 echo "S3 buckets: video-raw, video-encoded"
-echo "SQS queue URL: ${QUEUE_URL}"
+echo "SQS encode queue URL: ${QUEUE_URL}"
+echo "SQS metadata index queue URL: ${META_QUEUE_URL}"
 
 aws --endpoint-url="${ENDPOINT}" s3api put-bucket-cors --bucket video-raw --cors-configuration '{
   "CORSRules":[{"AllowedOrigins":["*"],"AllowedMethods":["GET","PUT","POST","HEAD"],"AllowedHeaders":["*"]}]

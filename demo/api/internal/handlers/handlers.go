@@ -9,11 +9,13 @@ import (
 	"net/http"
 	"path"
 	"strings"
+	"time"
 
 	"video-platform/demo/internal/config"
 	"video-platform/demo/internal/models"
 	"video-platform/demo/internal/streamutil"
 	"video-platform/demo/internal/tracing"
+	"video-platform/demo/internal/videometaqueue"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -25,24 +27,57 @@ import (
 )
 
 type Handler struct {
-	cfg         config.Config
-	s3          S3API
-	sqs         SQSAPI
-	queueURL    string
-	videos      VideoRepository
-	videoCache  VideoCacher
+	cfg                config.Config
+	s3                 S3API
+	sqs                SQSAPI
+	queueURL           string
+	metadataQueueURL   string
+	metadataPublisher  videometaqueue.Publisher
+	videos             VideoRepository
+	videoCache         VideoCacher
 }
 
 // New wires HTTP handlers with concrete AWS/Mongo/Redis clients from main.
-func New(cfg config.Config, s3cli S3API, sqscli SQSAPI, queueURL string, videos VideoRepository, vc VideoCacher) *Handler {
-	return &Handler{
-		cfg:        cfg,
-		s3:         s3cli,
-		sqs:        sqscli,
-		queueURL:   queueURL,
-		videos:     videos,
-		videoCache: vc,
+// metadataPublisher may be nil; it is treated as videometaqueue.Noop.
+func New(cfg config.Config, s3cli S3API, sqscli SQSAPI, encodeQueueURL, metadataQueueURL string, videos VideoRepository, vc VideoCacher, metadataPublisher videometaqueue.Publisher) *Handler {
+	if metadataPublisher == nil {
+		metadataPublisher = videometaqueue.Noop{}
 	}
+	return &Handler{
+		cfg:               cfg,
+		s3:                s3cli,
+		sqs:               sqscli,
+		queueURL:          encodeQueueURL,
+		metadataQueueURL:  metadataQueueURL,
+		metadataPublisher: metadataPublisher,
+		videos:            videos,
+		videoCache:        vc,
+	}
+}
+
+func (h *Handler) publishVideoMetadata(ctx context.Context, ev videometaqueue.Event) {
+	c, sp := tracing.Start(ctx, "sqs.SendMessage",
+		attribute.String("messaging.system", "aws_sqs"),
+		attribute.String("messaging.destination.name", h.metadataQueueURL),
+		attribute.String("videometa.op", ev.Op),
+		attribute.String("video.id", ev.VideoID),
+	)
+	err := h.metadataPublisher.Publish(c, ev)
+	tracing.Finish(sp, err)
+	if err != nil {
+		slog.ErrorContext(ctx, "metadata_index_enqueue_failed",
+			"error", err,
+			"video_id", ev.VideoID,
+			"op", ev.Op,
+		)
+		return
+	}
+	slog.InfoContext(ctx, "metadata_index_enqueued",
+		"video_id", ev.VideoID,
+		"op", ev.Op,
+		"schema_version", ev.SchemaVersion,
+		"correlation_version", ev.CorrelationVersion,
+	)
 }
 
 func (h *Handler) Routes() chi.Router {
@@ -139,6 +174,8 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	slog.InfoContext(ctx, "video_record_created", "video_id", id, "status", v.Status)
+
+	h.publishVideoMetadata(ctx, videometaqueue.NewEvent(id, videometaqueue.OpCreated, v.UpdatedAt))
 
 	body, _ := json.Marshal(map[string]string{"video_id": id})
 	{
@@ -381,6 +418,7 @@ func (h *Handler) DeleteVideo(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	h.publishVideoMetadata(ctx, videometaqueue.NewEvent(id, videometaqueue.OpDeleted, time.Now().UTC()))
 	slog.InfoContext(ctx, "delete_video_complete", "video_id", id)
 	w.WriteHeader(http.StatusNoContent)
 }
