@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	"video-platform/demo/internal/models"
@@ -12,6 +14,9 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
+
+// ErrVideoNotFound is returned when an update targets a missing video id.
+var ErrVideoNotFound = errors.New("store: video not found")
 
 type VideoStore struct {
 	coll *mongo.Collection
@@ -32,11 +37,20 @@ func (s *VideoStore) Create(ctx context.Context, v *models.Video) error {
 	}
 	v.CreatedAt = time.Now().UTC()
 	v.UpdatedAt = v.CreatedAt
+	vis := v.Visibility
+	if vis == "" {
+		vis = models.VisibilityPublic
+		v.Visibility = vis
+	}
+	if !models.ValidVisibility(vis) {
+		return fmt.Errorf("store: invalid visibility %q", vis)
+	}
 	doc := bson.M{
 		"_id":         oid,
 		"title":       v.Title,
 		"description": v.Description,
 		"uploader":    v.Uploader,
+		"visibility":  vis,
 		"raw_s3_key":  v.RawS3Key,
 		"status":      v.Status,
 		"created_at":  v.CreatedAt,
@@ -44,6 +58,37 @@ func (s *VideoStore) Create(ctx context.Context, v *models.Video) error {
 	}
 	_, err = s.coll.InsertOne(ctx, doc)
 	return err
+}
+
+// UpdateMetadata sets user-editable fields used for catalog and search indexing.
+// Title must be non-empty. Pass visibility=="" to leave visibility unchanged.
+func (s *VideoStore) UpdateMetadata(ctx context.Context, id, title, description, visibility string) error {
+	if strings.TrimSpace(title) == "" {
+		return fmt.Errorf("store: title required")
+	}
+	oid, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return err
+	}
+	set := bson.M{
+		"title":       title,
+		"description": description,
+		"updated_at":  time.Now().UTC(),
+	}
+	if visibility != "" {
+		if !models.ValidVisibility(visibility) {
+			return fmt.Errorf("store: invalid visibility %q", visibility)
+		}
+		set["visibility"] = visibility
+	}
+	res, err := s.coll.UpdateOne(ctx, bson.M{"_id": oid}, bson.M{"$set": set})
+	if err != nil {
+		return err
+	}
+	if res.MatchedCount == 0 {
+		return ErrVideoNotFound
+	}
+	return nil
 }
 
 func (s *VideoStore) GetByID(ctx context.Context, id string) (*models.Video, error) {
@@ -56,6 +101,7 @@ func (s *VideoStore) GetByID(ctx context.Context, id string) (*models.Video, err
 		Title         string             `bson:"title"`
 		Description   string             `bson:"description"`
 		Uploader      string             `bson:"uploader"`
+		Visibility    string             `bson:"visibility"`
 		RawS3Key      string             `bson:"raw_s3_key"`
 		EncodedPrefix string             `bson:"encoded_prefix"`
 		Status        string             `bson:"status"`
@@ -70,18 +116,23 @@ func (s *VideoStore) GetByID(ctx context.Context, id string) (*models.Video, err
 	if err != nil {
 		return nil, err
 	}
-	return &models.Video{
+	v := &models.Video{
 		ID:            raw.ID.Hex(),
 		Title:         raw.Title,
 		Description:   raw.Description,
 		Uploader:      raw.Uploader,
+		Visibility:    raw.Visibility,
 		RawS3Key:      raw.RawS3Key,
 		EncodedPrefix: raw.EncodedPrefix,
 		Status:        raw.Status,
 		DurationSec:   raw.DurationSec,
 		CreatedAt:     raw.CreatedAt,
 		UpdatedAt:     raw.UpdatedAt,
-	}, nil
+	}
+	if v.Visibility == "" {
+		v.Visibility = models.VisibilityPublic
+	}
+	return v, nil
 }
 
 func (s *VideoStore) List(ctx context.Context, limit int64) ([]models.Video, error) {
@@ -101,6 +152,7 @@ func (s *VideoStore) List(ctx context.Context, limit int64) ([]models.Video, err
 			Title         string             `bson:"title"`
 			Description   string             `bson:"description"`
 			Uploader      string             `bson:"uploader"`
+			Visibility    string             `bson:"visibility"`
 			RawS3Key      string             `bson:"raw_s3_key"`
 			EncodedPrefix string             `bson:"encoded_prefix"`
 			Status        string             `bson:"status"`
@@ -111,11 +163,16 @@ func (s *VideoStore) List(ctx context.Context, limit int64) ([]models.Video, err
 		if err := cur.Decode(&raw); err != nil {
 			return nil, err
 		}
+		vis := raw.Visibility
+		if vis == "" {
+			vis = models.VisibilityPublic
+		}
 		out = append(out, models.Video{
 			ID:            raw.ID.Hex(),
 			Title:         raw.Title,
 			Description:   raw.Description,
 			Uploader:      raw.Uploader,
+			Visibility:    vis,
 			RawS3Key:      raw.RawS3Key,
 			EncodedPrefix: raw.EncodedPrefix,
 			Status:        raw.Status,

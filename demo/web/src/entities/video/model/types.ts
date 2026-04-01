@@ -1,10 +1,14 @@
 export type VideoStatus = 'processing' | 'ready' | 'failed' | string
 
+export type VideoVisibility = 'public' | 'unlisted' | 'private' | string
+
 export type Video = {
   id: string
   title: string
   description: string
   uploader: string
+  /** Catalog/search visibility; omitted in older API responses defaults to public. */
+  visibility?: VideoVisibility
   raw_s3_key: string
   encoded_prefix?: string
   /** Poster / thumbnail URL when API provides one (optional). */

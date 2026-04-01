@@ -68,6 +68,17 @@ func TestVideoStore_Mongo_Integration(t *testing.T) {
 	if got == nil || got.Title != "integration" || got.Status != models.StatusProcessing {
 		t.Fatalf("GetByID: %+v", got)
 	}
+	if got.Visibility != models.VisibilityPublic {
+		t.Fatalf("default visibility: %+v", got)
+	}
+
+	if err := s.UpdateMetadata(ctx, id, "integration", "updated desc", models.VisibilityPrivate); err != nil {
+		t.Fatal(err)
+	}
+	got, err = s.GetByID(ctx, id)
+	if err != nil || got == nil || got.Description != "updated desc" || got.Visibility != models.VisibilityPrivate {
+		t.Fatalf("after UpdateMetadata: %+v err=%v", got, err)
+	}
 
 	if err := s.MarkReady(ctx, id, "videos/"+id+"/hls/", 42); err != nil {
 		t.Fatal(err)

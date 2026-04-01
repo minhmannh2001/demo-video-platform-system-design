@@ -122,6 +122,7 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 		Title:       title,
 		Description: desc,
 		Uploader:    uploader,
+		Visibility:  models.VisibilityPublic,
 		RawS3Key:    rawKey,
 		Status:      models.StatusProcessing,
 	}
