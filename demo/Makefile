@@ -1,7 +1,7 @@
 # Run from this directory: cd demo && make <target>
 # Optional: cp .env.example .env and edit — all run-* targets load .env when present.
 
-.PHONY: help compose-up-local run-api run-worker run-api-otel run-worker-otel run-api-logs run-worker-logs run-api-dev run-worker-dev
+.PHONY: help compose-up-local run-api run-worker run-api-otel run-worker-otel run-api-logs run-worker-logs run-api-dev run-worker-dev test-es-integration
 
 help:
 	@echo "Targets (loads .env if present):"
@@ -14,6 +14,7 @@ help:
 	@echo "  make run-worker-logs  - worker + LOG_FILE=var/host-logs/video-worker.log"
 	@echo "  make run-api-dev      - API + OTLP + log file (typical local stack)"
 	@echo "  make run-worker-dev   - worker + OTLP + log file"
+	@echo "  make test-es-integration - ES client integration test (Docker / Testcontainers)"
 
 # shell: load .env then run command (paths relative to demo/)
 define WITH_ENV
@@ -22,6 +23,9 @@ endef
 
 compose-up-local:
 	docker compose up -d localstack mongodb redis jaeger elasticsearch kibana filebeat
+
+test-es-integration:
+	go test -tags=integration ./internal/search/esclient/ -v -count=1
 
 run-api:
 	$(call WITH_ENV,exec go run ./api/cmd/server)

@@ -40,6 +40,12 @@ func TestLoad_defaults(t *testing.T) {
 	if c.SQSEncodeQueue != "" {
 		t.Fatalf("SQSEncodeQueue: want empty when unset, got %q", c.SQSEncodeQueue)
 	}
+	if c.ElasticsearchURL != "" || c.ElasticsearchUsername != "" || c.ElasticsearchPassword != "" {
+		t.Fatalf("Elasticsearch: want empty when unset")
+	}
+	if c.ElasticsearchIndexVideos != "videos" {
+		t.Fatalf("ElasticsearchIndexVideos: got %q want videos", c.ElasticsearchIndexVideos)
+	}
 }
 
 func TestLoad_overrides(t *testing.T) {
@@ -58,6 +64,10 @@ func TestLoad_overrides(t *testing.T) {
 	t.Setenv("REDIS_CACHE_TTL_SEC", "120")
 	t.Setenv("CORS_ORIGINS", "http://a:1, http://b:2 ")
 	t.Setenv("PUBLIC_BASE_URL", "https://api.example.com/")
+	t.Setenv("ELASTICSEARCH_URL", "http://es1:9200, http://es2:9200")
+	t.Setenv("ELASTICSEARCH_USERNAME", "elastic")
+	t.Setenv("ELASTICSEARCH_PASSWORD", "secret")
+	t.Setenv("ELASTICSEARCH_INDEX_VIDEOS", "videos_prod")
 
 	c := Load()
 	if c.HTTPAddr != ":9090" {
@@ -93,6 +103,16 @@ func TestLoad_overrides(t *testing.T) {
 	if c.PublicBaseURL != "https://api.example.com" {
 		t.Fatalf("PublicBaseURL should trim trailing slash: got %q", c.PublicBaseURL)
 	}
+	addrs := c.ElasticsearchAddresses()
+	if len(addrs) != 2 || addrs[0] != "http://es1:9200" || addrs[1] != "http://es2:9200" {
+		t.Fatalf("ElasticsearchAddresses: %#v", addrs)
+	}
+	if c.ElasticsearchUsername != "elastic" || c.ElasticsearchPassword != "secret" {
+		t.Fatalf("Elasticsearch credentials")
+	}
+	if c.ElasticsearchIndexVideos != "videos_prod" {
+		t.Fatalf("ElasticsearchIndexVideos: %q", c.ElasticsearchIndexVideos)
+	}
 }
 
 func TestLoad_cors_whitespaceOnlyFallsBackToDevDefaults(t *testing.T) {
@@ -126,6 +146,7 @@ func clearDemoEnv(t *testing.T) {
 		"S3_RAW_BUCKET", "S3_ENCODED_BUCKET", "SQS_ENCODE_QUEUE_URL",
 		"MONGODB_URI", "MONGODB_DB", "REDIS_ADDR", "REDIS_CACHE_TTL_SEC",
 		"CORS_ORIGINS", "PUBLIC_BASE_URL",
+		"ELASTICSEARCH_URL", "ELASTICSEARCH_USERNAME", "ELASTICSEARCH_PASSWORD", "ELASTICSEARCH_INDEX_VIDEOS",
 	}
 	for _, k := range keys {
 		t.Cleanup(func() {

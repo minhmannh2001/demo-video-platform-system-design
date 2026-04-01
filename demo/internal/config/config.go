@@ -8,20 +8,25 @@ import (
 )
 
 type Config struct {
-	HTTPAddr        string
-	AWSRegion       string
-	AWSEndpoint     string
-	AWSAccessKey    string
-	AWSSecretKey    string
-	S3RawBucket     string
-	S3EncodedBucket string
-	SQSEncodeQueue  string
-	MongoURI        string
-	MongoDB         string
-	RedisAddr       string
-	RedisTTL        time.Duration
-	CORSOrigins     []string
-	PublicBaseURL   string
+	HTTPAddr string
+	// ElasticsearchURL is a comma-separated list of node URLs for the video search index (optional until search is wired).
+	ElasticsearchURL         string
+	ElasticsearchUsername    string
+	ElasticsearchPassword    string
+	ElasticsearchIndexVideos string
+	AWSRegion                string
+	AWSEndpoint              string
+	AWSAccessKey             string
+	AWSSecretKey             string
+	S3RawBucket              string
+	S3EncodedBucket          string
+	SQSEncodeQueue           string
+	MongoURI                 string
+	MongoDB                  string
+	RedisAddr                string
+	RedisTTL                 time.Duration
+	CORSOrigins              []string
+	PublicBaseURL            string
 }
 
 func Load() Config {
@@ -37,22 +42,41 @@ func Load() Config {
 	if len(cors) == 0 {
 		cors = []string{"http://localhost:5173", "http://127.0.0.1:5173"}
 	}
+	esIndex := getenv("ELASTICSEARCH_INDEX_VIDEOS", "videos")
 	return Config{
-		HTTPAddr:        getenv("HTTP_ADDR", ":8080"),
-		AWSRegion:       getenv("AWS_REGION", "us-east-1"),
-		AWSEndpoint:     getenv("AWS_ENDPOINT_URL", "http://localhost:4566"),
-		AWSAccessKey:    getenv("AWS_ACCESS_KEY_ID", "test"),
-		AWSSecretKey:    getenv("AWS_SECRET_ACCESS_KEY", "test"),
-		S3RawBucket:     getenv("S3_RAW_BUCKET", "video-raw"),
-		S3EncodedBucket: getenv("S3_ENCODED_BUCKET", "video-encoded"),
-		SQSEncodeQueue:  os.Getenv("SQS_ENCODE_QUEUE_URL"),
-		MongoURI:        getenv("MONGODB_URI", "mongodb://localhost:27017"),
-		MongoDB:         getenv("MONGODB_DB", "video_demo"),
-		RedisAddr:       getenv("REDIS_ADDR", "localhost:6379"),
-		RedisTTL:        time.Duration(ttlSec) * time.Second,
-		CORSOrigins:     cors,
-		PublicBaseURL:   strings.TrimRight(getenv("PUBLIC_BASE_URL", "http://localhost:8080"), "/"),
+		HTTPAddr:                 getenv("HTTP_ADDR", ":8080"),
+		ElasticsearchURL:         strings.TrimSpace(os.Getenv("ELASTICSEARCH_URL")),
+		ElasticsearchUsername:    getenv("ELASTICSEARCH_USERNAME", ""),
+		ElasticsearchPassword:    getenv("ELASTICSEARCH_PASSWORD", ""),
+		ElasticsearchIndexVideos: esIndex,
+		AWSRegion:                getenv("AWS_REGION", "us-east-1"),
+		AWSEndpoint:              getenv("AWS_ENDPOINT_URL", "http://localhost:4566"),
+		AWSAccessKey:             getenv("AWS_ACCESS_KEY_ID", "test"),
+		AWSSecretKey:             getenv("AWS_SECRET_ACCESS_KEY", "test"),
+		S3RawBucket:              getenv("S3_RAW_BUCKET", "video-raw"),
+		S3EncodedBucket:          getenv("S3_ENCODED_BUCKET", "video-encoded"),
+		SQSEncodeQueue:           os.Getenv("SQS_ENCODE_QUEUE_URL"),
+		MongoURI:                 getenv("MONGODB_URI", "mongodb://localhost:27017"),
+		MongoDB:                  getenv("MONGODB_DB", "video_demo"),
+		RedisAddr:                getenv("REDIS_ADDR", "localhost:6379"),
+		RedisTTL:                 time.Duration(ttlSec) * time.Second,
+		CORSOrigins:              cors,
+		PublicBaseURL:            strings.TrimRight(getenv("PUBLIC_BASE_URL", "http://localhost:8080"), "/"),
 	}
+}
+
+// ElasticsearchAddresses splits ELASTICSEARCH_URL by comma; empty string yields nil.
+func (c Config) ElasticsearchAddresses() []string {
+	if strings.TrimSpace(c.ElasticsearchURL) == "" {
+		return nil
+	}
+	var out []string
+	for _, p := range strings.Split(c.ElasticsearchURL, ",") {
+		if s := strings.TrimSpace(p); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 func getenv(k, def string) string {
