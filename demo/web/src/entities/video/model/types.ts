@@ -30,3 +30,17 @@ export type UploadResponse = {
   id: string
   status: string
 }
+
+/** One hit from GET /videos/search (Elasticsearch). */
+export type VideoSearchHit = {
+  video_id: string
+  score?: number
+  highlights?: Record<string, string[]>
+}
+
+export type VideoSearchResponse = {
+  total: number
+  from: number
+  size: number
+  hits: VideoSearchHit[]
+}

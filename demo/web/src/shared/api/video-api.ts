@@ -1,5 +1,10 @@
 import { getApiBase } from '@/shared/config/env'
-import type { UploadResponse, Video, WatchResponse } from '@/entities/video'
+import type {
+  UploadResponse,
+  Video,
+  VideoSearchResponse,
+  WatchResponse,
+} from '@/entities/video'
 
 async function parseJson<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -15,6 +20,29 @@ export async function listVideos(
   const res = await fetch(`${baseUrl}/videos`)
   const data = await parseJson<Video[] | null>(res)
   return Array.isArray(data) ? data : []
+}
+
+export type SearchPublishedOptions = {
+  from?: number
+  size?: number
+  /** Ask API for <mark> snippets in highlights (optional). */
+  highlight?: boolean
+}
+
+export async function searchPublishedVideos(
+  q: string,
+  opts: SearchPublishedOptions = {},
+  baseUrl: string = getApiBase(),
+): Promise<VideoSearchResponse> {
+  const params = new URLSearchParams()
+  params.set('q', q)
+  if (opts.from != null) params.set('from', String(opts.from))
+  if (opts.size != null) params.set('size', String(opts.size))
+  if (opts.highlight) params.set('highlight', 'true')
+  const res = await fetch(
+    `${baseUrl}/videos/search?${params.toString()}`,
+  )
+  return parseJson<VideoSearchResponse>(res)
 }
 
 export async function getVideo(

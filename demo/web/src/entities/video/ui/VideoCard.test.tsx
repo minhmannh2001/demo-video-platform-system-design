@@ -4,10 +4,13 @@ import { describe, expect, it } from 'vitest'
 import type { Video } from '../model/types'
 import { VideoCard } from './VideoCard'
 
-function renderCard(video: Video) {
+function renderCard(
+  video: Video,
+  opts?: { titleHighlight?: string; descriptionHighlight?: string },
+) {
   return render(
     <MemoryRouter>
-      <VideoCard video={video} />
+      <VideoCard video={video} {...opts} />
     </MemoryRouter>,
   )
 }
@@ -68,5 +71,19 @@ describe('VideoCard', () => {
   it('uses Unknown when uploader is empty', () => {
     renderCard(base({ uploader: '' }))
     expect(screen.getByText('Unknown')).toBeInTheDocument()
+  })
+
+  it('renders Elasticsearch title and description highlights with mark', () => {
+    renderCard(
+      base({ title: 'Plain title', description: 'Plain desc' }),
+      {
+        titleHighlight: 'Hello <mark>world</mark>!',
+        descriptionHighlight: 'Desc <mark>match</mark> here',
+      },
+    )
+    const marks = screen.getAllByText(/world|match/)
+    expect(marks.some((el) => el.tagName === 'MARK')).toBe(true)
+    expect(screen.getByText('world')).toBeInTheDocument()
+    expect(screen.getByText('match')).toBeInTheDocument()
   })
 })

@@ -5,20 +5,34 @@ import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import type { Video as VideoModel } from '../model/types'
 import { formatPublishedAt, truncateDescription } from '../lib/format'
+import { renderSearchHighlight } from '../lib/highlight'
 import { StatusBadge } from './StatusBadge'
 
 type Props = {
   video: VideoModel
   className?: string
+  /** First Elasticsearch highlight fragment for title (HTML string from API). */
+  titleHighlight?: string
+  /** First Elasticsearch highlight fragment for description. */
+  descriptionHighlight?: string
 }
 
-export function VideoCard({ video, className }: Props) {
+export function VideoCard({
+  video,
+  className,
+  titleHighlight,
+  descriptionHighlight,
+}: Props) {
   const desc = video.description?.trim()
   const preview = desc ? truncateDescription(desc) : null
+  const descFromHighlight =
+    descriptionHighlight?.trim() &&
+    renderSearchHighlight(descriptionHighlight.trim())
 
   return (
     <Link
       to={`/watch/${video.id}`}
+      aria-label={`Watch ${video.title}`}
       className={cn(
         'block outline-none transition focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
         className,
@@ -54,8 +68,10 @@ export function VideoCard({ video, className }: Props) {
           )}
         </div>
         <CardContent className="flex flex-col gap-3 px-5 pb-5 pt-4">
-          <h2 className="line-clamp-2 text-base font-semibold leading-snug text-foreground">
-            {video.title}
+          <h2 className="line-clamp-2 text-base font-semibold leading-snug text-foreground [&_mark]:text-foreground">
+            {titleHighlight?.trim()
+              ? renderSearchHighlight(titleHighlight.trim())
+              : video.title}
           </h2>
           <p className="text-xs text-muted-foreground">
             <span className="font-medium text-foreground/80">
@@ -70,7 +86,11 @@ export function VideoCard({ video, className }: Props) {
             <StatusBadge status={video.status} />
           </div>
           <div className="border-t border-border/60 pt-3">
-            {preview ? (
+            {descFromHighlight ? (
+              <p className="line-clamp-2 text-sm leading-relaxed text-muted-foreground [&_mark]:text-foreground/90">
+                {descFromHighlight}
+              </p>
+            ) : preview ? (
               <p className="line-clamp-2 text-sm leading-relaxed text-muted-foreground">
                 {preview}
               </p>
