@@ -28,6 +28,7 @@ type VideoRepository interface {
 	Create(ctx context.Context, v *models.Video) error
 	GetByID(ctx context.Context, id string) (*models.Video, error)
 	List(ctx context.Context, limit int64) ([]models.Video, error)
+	UpdateMetadata(ctx context.Context, id, title, description, visibility string) error
 	DeleteByID(ctx context.Context, id string) (bool, error)
 }
 

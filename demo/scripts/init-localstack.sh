@@ -41,6 +41,27 @@ echo "S3 buckets: video-raw, video-encoded"
 echo "SQS encode queue URL: ${QUEUE_URL}"
 echo "SQS metadata index queue URL: ${META_QUEUE_URL}"
 
+# DLQ for metadata queue: after maxReceiveCount receives without DeleteMessage, message moves here.
+if ! META_DLQ_URL=$(aws --endpoint-url="${ENDPOINT}" sqs get-queue-url \
+  --queue-name video-metadata-index-dlq \
+  --output text \
+  --query QueueUrl 2>/dev/null); then
+  META_DLQ_URL=$(aws --endpoint-url="${ENDPOINT}" sqs create-queue \
+    --queue-name video-metadata-index-dlq \
+    --output text \
+    --query QueueUrl)
+fi
+META_DLQ_ARN=$(aws --endpoint-url="${ENDPOINT}" sqs get-queue-attributes \
+  --queue-url "${META_DLQ_URL}" \
+  --attribute-names QueueArn \
+  --output text \
+  --query Attributes.QueueArn)
+aws --endpoint-url="${ENDPOINT}" sqs set-queue-attributes \
+  --queue-url "${META_QUEUE_URL}" \
+  --attributes "{\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"${META_DLQ_ARN}\\\",\\\"maxReceiveCount\\\":\\\"5\\\"}\"}" \
+  2>/dev/null || echo "warning: could not set redrive on video-metadata-index (check LocalStack SQS support)"
+echo "SQS metadata DLQ URL: ${META_DLQ_URL}"
+
 aws --endpoint-url="${ENDPOINT}" s3api put-bucket-cors --bucket video-raw --cors-configuration '{
   "CORSRules":[{"AllowedOrigins":["*"],"AllowedMethods":["GET","PUT","POST","HEAD"],"AllowedHeaders":["*"]}]
 }' 2>/dev/null || true

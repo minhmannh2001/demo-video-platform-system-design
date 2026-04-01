@@ -2,26 +2,24 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
-	"time"
 
 	"video-platform/demo/internal/applog"
 	"video-platform/demo/internal/awsclient"
 	"video-platform/demo/internal/cache"
 	"video-platform/demo/internal/config"
+	"video-platform/demo/internal/search/esclient"
 	"video-platform/demo/internal/store"
 	"video-platform/demo/internal/tracing"
 	"video-platform/demo/internal/videometaqueue"
 	"video-platform/demo/internal/worker"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/sqs"
+	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
-	"go.opentelemetry.io/otel/attribute"
 )
 
 func main() {
@@ -61,6 +59,9 @@ func main() {
 	videoStore := store.NewVideoStore(mongoClient.Database(cfg.MongoDB))
 	redisCache := cache.New(cfg.RedisAddr, cfg.RedisTTL)
 
+	rdb := redis.NewClient(&redis.Options{Addr: cfg.RedisAddr})
+	defer func() { _ = rdb.Close() }()
+
 	awsCli, err := awsclient.New(ctx, cfg)
 	if err != nil {
 		slog.Error("aws client init failed", "error", err)
@@ -80,75 +81,46 @@ func main() {
 		metaPub = videometaqueue.NewSQSPublisher(awsCli.SQS, metaQueueURL)
 	}
 
+	var esClient *esclient.Client
+	esClient, esErr := esclient.NewFromAppConfig(cfg)
+	if esErr != nil {
+		slog.Warn("elasticsearch client unavailable; search index consumer disabled", "error", esErr)
+	} else {
+		if err := esClient.EnsureVideosIndexSetup(ctx); err != nil {
+			slog.Warn("elasticsearch index bootstrap", "error", err)
+		}
+	}
+
 	proc := worker.NewProcessor(worker.Deps{
-		S3:                 awsCli.S3,
-		RawBucket:          cfg.S3RawBucket,
-		EncodedBucket:      cfg.S3EncodedBucket,
-		Store:              videoStore,
-		Encoder:            worker.FFmpegEncoder{},
-		Cache:              redisCache,
-		TempDirParent:      os.TempDir(),
-		MetadataPublisher:  metaPub,
-		MetadataQueueURL:   metaQueueURL,
+		S3:                awsCli.S3,
+		RawBucket:         cfg.S3RawBucket,
+		EncodedBucket:     cfg.S3EncodedBucket,
+		Store:             videoStore,
+		Encoder:           worker.FFmpegEncoder{},
+		Cache:             redisCache,
+		TempDirParent:     os.TempDir(),
+		MetadataPublisher: metaPub,
+		MetadataQueueURL:  metaQueueURL,
 	})
 
 	runCtx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	slog.Info("encoder worker polling", "queue_url", queueURL)
-	for {
-		if runCtx.Err() != nil {
-			slog.Info("shutdown", "reason", runCtx.Err().Error())
-			return
-		}
-		out, err := awsCli.SQS.ReceiveMessage(runCtx, &sqs.ReceiveMessageInput{
-			QueueUrl:              aws.String(queueURL),
-			MaxNumberOfMessages:   1,
-			WaitTimeSeconds:       20,
-			VisibilityTimeout:     300,
-			MessageAttributeNames: []string{"All"},
-		})
-		if err != nil {
-			if runCtx.Err() != nil {
-				return
-			}
-			slog.Warn("sqs receive failed", "error", err)
-			time.Sleep(2 * time.Second)
-			continue
-		}
-		for _, msg := range out.Messages {
-			body := aws.ToString(msg.Body)
-			rh := aws.ToString(msg.ReceiptHandle)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		runEncodeWorker(runCtx, awsCli.SQS, queueURL, proc)
+	}()
 
-			msgCtx := tracing.ExtractFromSQSAttributes(runCtx, msg.MessageAttributes)
-			var job struct {
-				VideoID string `json:"video_id"`
-			}
-			spanAttrs := []attribute.KeyValue{
-				attribute.String("messaging.system", "aws_sqs"),
-			}
-			if err := json.Unmarshal([]byte(body), &job); err == nil && job.VideoID != "" {
-				spanAttrs = append(spanAttrs, attribute.String("video.id", job.VideoID))
-			}
-			if job.VideoID != "" {
-				slog.InfoContext(msgCtx, "sqs_job_received",
-					"video_id", job.VideoID,
-					"sqs_message_id", aws.ToString(msg.MessageId),
-				)
-			}
-			msgCtx, span := tracing.Start(msgCtx, "worker.encode_job", spanAttrs...)
-			procErr := proc.HandleMessage(msgCtx, body)
-			tracing.Finish(span, procErr)
-			if procErr != nil {
-				slog.ErrorContext(msgCtx, "encode_job_failed", "error", procErr, "video_id", job.VideoID)
-			}
-			_, delErr := awsCli.SQS.DeleteMessage(runCtx, &sqs.DeleteMessageInput{
-				QueueUrl:      aws.String(queueURL),
-				ReceiptHandle: aws.String(rh),
-			})
-			if delErr != nil {
-				slog.Warn("sqs delete message failed", "error", delErr)
-			}
-		}
+	if esClient != nil && metaErr == nil && metaQueueURL != "" {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			runSearchIndexConsumer(runCtx, awsCli.SQS, metaQueueURL, videoStore, esClient, rdb)
+		}()
 	}
+
+	wg.Wait()
+	slog.Info("worker processes stopped")
 }

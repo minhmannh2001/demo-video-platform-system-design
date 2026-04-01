@@ -121,6 +121,7 @@ type fakeStore struct {
 	createE error
 	listE   error
 	getE    error
+	updateE error
 }
 
 func (f *fakeStore) Create(ctx context.Context, v *models.Video) error {
@@ -161,6 +162,29 @@ func (f *fakeStore) List(ctx context.Context, limit int64) ([]models.Video, erro
 		out = append(out, *v)
 	}
 	return out, nil
+}
+
+func (f *fakeStore) UpdateMetadata(ctx context.Context, id, title, description, visibility string) error {
+	if f.updateE != nil {
+		return f.updateE
+	}
+	if _, err := primitive.ObjectIDFromHex(id); err != nil {
+		return err
+	}
+	if f.byID == nil {
+		return store.ErrVideoNotFound
+	}
+	v, ok := f.byID[id]
+	if !ok {
+		return store.ErrVideoNotFound
+	}
+	v.Title = title
+	v.Description = description
+	if visibility != "" {
+		v.Visibility = visibility
+	}
+	v.UpdatedAt = time.Now().UTC()
+	return nil
 }
 
 func (f *fakeStore) DeleteByID(ctx context.Context, id string) (bool, error) {
@@ -288,6 +312,40 @@ func TestListVideos_empty(t *testing.T) {
 	}
 	if len(list) != 0 {
 		t.Fatalf("want empty list, got %d", len(list))
+	}
+}
+
+func TestPatchVideo_success(t *testing.T) {
+	id := "507f1f77bcf86cd799439011"
+	st := &fakeStore{byID: map[string]*models.Video{
+		id: {ID: id, Title: "old", Description: "d", Status: models.StatusReady},
+	}}
+	meta := &recordingMetaPub{}
+	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", "meta", st, nil, meta)
+	srv := httptest.NewServer(h.Routes())
+	t.Cleanup(srv.Close)
+
+	body := `{"title":"new title","description":"nd"}`
+	req, _ := http.NewRequest(http.MethodPatch, srv.URL+"/videos/"+id, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status %d: %s", resp.StatusCode, b)
+	}
+	var got models.Video
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Title != "new title" || got.Description != "nd" {
+		t.Fatalf("%+v", got)
+	}
+	if len(meta.events) != 1 || meta.events[0].Op != videometaqueue.OpUpdated {
+		t.Fatalf("metadata: %+v", meta.events)
 	}
 }
 

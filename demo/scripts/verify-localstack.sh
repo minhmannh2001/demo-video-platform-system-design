@@ -10,4 +10,5 @@ aws --endpoint-url="${ENDPOINT}" s3 ls "s3://video-raw" >/dev/null
 aws --endpoint-url="${ENDPOINT}" s3 ls "s3://video-encoded" >/dev/null
 aws --endpoint-url="${ENDPOINT}" sqs get-queue-url --queue-name video-encode-jobs --output text --query QueueUrl >/dev/null
 aws --endpoint-url="${ENDPOINT}" sqs get-queue-url --queue-name video-metadata-index --output text --query QueueUrl >/dev/null
+aws --endpoint-url="${ENDPOINT}" sqs get-queue-url --queue-name video-metadata-index-dlq --output text --query QueueUrl >/dev/null
 echo "verify-localstack: OK"

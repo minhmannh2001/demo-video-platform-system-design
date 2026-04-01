@@ -17,6 +17,7 @@ x-api-worker-env: &api-worker-env
   OTEL_TRACE_SAMPLING_ENABLED: "true"
   OTEL_TRACE_SAMPLE_RATIO: "1.0"
   LOG_LEVEL: info
+  ELASTICSEARCH_URL: http://elasticsearch:9200
 
 services:
   localstack:
@@ -122,10 +123,16 @@ services:
     environment:
       <<: *api-worker-env
     depends_on:
-      - jaeger
-      - mongodb
-      - redis
-      - localstack
+      jaeger:
+        condition: service_started
+      mongodb:
+        condition: service_started
+      redis:
+        condition: service_started
+      localstack:
+        condition: service_started
+      elasticsearch:
+        condition: service_healthy
 
   # Logging part 3 — ship Docker stdout logs to Elasticsearch.
   filebeat:

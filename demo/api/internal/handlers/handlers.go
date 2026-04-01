@@ -13,6 +13,7 @@ import (
 
 	"video-platform/demo/internal/config"
 	"video-platform/demo/internal/models"
+	"video-platform/demo/internal/store"
 	"video-platform/demo/internal/streamutil"
 	"video-platform/demo/internal/tracing"
 	"video-platform/demo/internal/videometaqueue"
@@ -85,6 +86,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/videos/upload", h.Upload)
 	r.Get("/videos", h.ListVideos)
 	r.Get("/videos/{id}", h.GetVideo)
+	r.Patch("/videos/{id}", h.PatchVideo)
 	r.Delete("/videos/{id}", h.DeleteVideo)
 	r.Get("/videos/{id}/watch", h.Watch)
 	r.Handle("/stream/*", http.StripPrefix("/stream/", http.HandlerFunc(h.StreamObject)))
@@ -278,6 +280,66 @@ func (h *Handler) GetVideo(w http.ResponseWriter, r *http.Request) {
 		tracing.Finish(sp, setErr)
 	}
 	slog.InfoContext(ctx, "get_video", "video_id", id, "cache_hit", false, "status", v.Status)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+func (h *Handler) PatchVideo(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		http.NotFound(w, r)
+		return
+	}
+	var body struct {
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		Visibility  string `json:"visibility"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(body.Title) == "" {
+		http.Error(w, "title required", http.StatusBadRequest)
+		return
+	}
+	{
+		c, sp := tracing.Start(ctx, "mongo.videos.updateMetadata",
+			attribute.String("db.system", "mongodb"),
+			attribute.String("db.mongodb.collection", "videos"),
+		)
+		err := h.videos.UpdateMetadata(c, id, body.Title, body.Description, body.Visibility)
+		tracing.Finish(sp, err)
+		if err != nil {
+			if errors.Is(err, store.ErrVideoNotFound) {
+				http.NotFound(w, r)
+				return
+			}
+			http.Error(w, "update failed", http.StatusInternalServerError)
+			return
+		}
+	}
+	v, err := h.videos.GetByID(ctx, id)
+	if err != nil {
+		http.Error(w, "db error", http.StatusInternalServerError)
+		return
+	}
+	if v == nil {
+		http.NotFound(w, r)
+		return
+	}
+	if h.videoCache != nil {
+		c, sp := tracing.Start(ctx, "redis.video.del",
+			attribute.String("db.system", "redis"),
+			attribute.String("db.operation", "DEL"),
+			attribute.String("redis.key", "video:"+id),
+		)
+		delErr := h.videoCache.Del(c, id)
+		tracing.Finish(sp, delErr)
+	}
+	h.publishVideoMetadata(ctx, videometaqueue.NewEvent(id, videometaqueue.OpUpdated, v.UpdatedAt))
+	slog.InfoContext(ctx, "video_metadata_patched", "video_id", id)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(v)
 }
