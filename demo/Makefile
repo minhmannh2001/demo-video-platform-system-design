@@ -1,7 +1,7 @@
 # Run from this directory: cd demo && make <target>
 # Optional: cp .env.example .env and edit — all run-* targets load .env when present.
 
-.PHONY: help compose-up-local run-api run-worker run-api-otel run-worker-otel run-api-logs run-worker-logs run-api-dev run-worker-dev test-es-integration
+.PHONY: help compose-up-local run-api run-worker run-api-otel run-worker-otel run-api-logs run-worker-logs run-api-dev run-worker-dev test-es-integration run-search-backfill
 
 help:
 	@echo "Targets (loads .env if present):"
@@ -15,6 +15,7 @@ help:
 	@echo "  make run-api-dev      - API + OTLP + log file (typical local stack)"
 	@echo "  make run-worker-dev   - worker + OTLP + log file"
 	@echo "  make test-es-integration - ES client integration test (Docker / Testcontainers)"
+	@echo "  make run-search-backfill - one-shot Mongo → ES bulk index (see docs/SEARCH_BACKFILL.md)"
 
 # shell: load .env then run command (paths relative to demo/)
 define WITH_ENV
@@ -26,6 +27,9 @@ compose-up-local:
 
 test-es-integration:
 	go test -tags=integration ./internal/search/esclient/ -v -count=1
+
+run-search-backfill:
+	$(call WITH_ENV,exec go run ./cmd/search-backfill)
 
 run-api:
 	$(call WITH_ENV,exec go run ./api/cmd/server)

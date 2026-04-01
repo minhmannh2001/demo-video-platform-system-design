@@ -190,6 +190,79 @@ func (s *VideoStore) List(ctx context.Context, limit int64) ([]models.Video, err
 	return out, nil
 }
 
+// ForEachVideoBatch streams all videos ordered by _id using a Mongo cursor. fn receives batches of at most batchSize
+// items (the last batch may be smaller). Intended for one-off backfill jobs.
+func (s *VideoStore) ForEachVideoBatch(ctx context.Context, batchSize int, fn func(context.Context, []models.Video) error) error {
+	if batchSize <= 0 {
+		batchSize = 500
+	}
+	opts := options.Find().
+		SetSort(bson.D{{Key: "_id", Value: 1}}).
+		SetBatchSize(int32(batchSize))
+	cur, err := s.coll.Find(ctx, bson.M{}, opts)
+	if err != nil {
+		return err
+	}
+	defer cur.Close(ctx)
+
+	batch := make([]models.Video, 0, batchSize)
+	flush := func() error {
+		if len(batch) == 0 {
+			return nil
+		}
+		if err := fn(ctx, batch); err != nil {
+			return err
+		}
+		batch = batch[:0]
+		return nil
+	}
+
+	for cur.Next(ctx) {
+		var raw struct {
+			ID            primitive.ObjectID `bson:"_id"`
+			Title         string             `bson:"title"`
+			Description   string             `bson:"description"`
+			Uploader      string             `bson:"uploader"`
+			Visibility    string             `bson:"visibility"`
+			RawS3Key      string             `bson:"raw_s3_key"`
+			EncodedPrefix string             `bson:"encoded_prefix"`
+			Status        string             `bson:"status"`
+			DurationSec   int                `bson:"duration_sec"`
+			CreatedAt     time.Time          `bson:"created_at"`
+			UpdatedAt     time.Time          `bson:"updated_at"`
+		}
+		if err := cur.Decode(&raw); err != nil {
+			return err
+		}
+		vis := raw.Visibility
+		if vis == "" {
+			vis = models.VisibilityPublic
+		}
+		batch = append(batch, models.Video{
+			ID:            raw.ID.Hex(),
+			Title:         raw.Title,
+			Description:   raw.Description,
+			Uploader:      raw.Uploader,
+			Visibility:    vis,
+			RawS3Key:      raw.RawS3Key,
+			EncodedPrefix: raw.EncodedPrefix,
+			Status:        raw.Status,
+			DurationSec:   raw.DurationSec,
+			CreatedAt:     raw.CreatedAt,
+			UpdatedAt:     raw.UpdatedAt,
+		})
+		if len(batch) >= batchSize {
+			if err := flush(); err != nil {
+				return err
+			}
+		}
+	}
+	if err := cur.Err(); err != nil {
+		return err
+	}
+	return flush()
+}
+
 func (s *VideoStore) MarkReady(ctx context.Context, id, encodedPrefix string, durationSec int) error {
 	oid, err := primitive.ObjectIDFromHex(id)
 	if err != nil {

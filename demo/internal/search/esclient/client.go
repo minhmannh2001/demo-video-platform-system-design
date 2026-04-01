@@ -216,3 +216,17 @@ func (c *Client) GetVideoSource(ctx context.Context, videoID string) (_ json.Raw
 	}
 	return wrap.Source, true, nil
 }
+
+// RefreshIndex makes recent writes visible for search (POST indices/_refresh).
+func (c *Client) RefreshIndex(ctx context.Context) error {
+	res, err := esapi.IndicesRefreshRequest{Index: []string{c.index}}.Do(ctx, c.es)
+	if err != nil {
+		return fmt.Errorf("esclient: refresh index: %w", err)
+	}
+	defer res.Body.Close()
+	if res.IsError() {
+		b, _ := io.ReadAll(res.Body)
+		return fmt.Errorf("esclient: refresh %s: %s", res.Status(), string(b))
+	}
+	return nil
+}
