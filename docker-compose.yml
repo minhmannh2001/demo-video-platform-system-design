@@ -1,0 +1,163 @@
+# Shared env for api + worker (Compose network hostnames). Tracing + structured logs on by default.
+x-api-worker-env: &api-worker-env
+  AWS_REGION: us-east-1
+  AWS_ACCESS_KEY_ID: test
+  AWS_SECRET_ACCESS_KEY: test
+  AWS_ENDPOINT_URL: http://localstack:4566
+  S3_RAW_BUCKET: video-raw
+  S3_ENCODED_BUCKET: video-encoded
+  SQS_ENCODE_QUEUE_URL: http://localstack:4566/000000000000/video-encode-jobs
+  SQS_VIDEO_METADATA_QUEUE_URL: http://localstack:4566/000000000000/video-metadata-index
+  MONGODB_URI: mongodb://mongodb:27017
+  MONGODB_DB: video_demo
+  REDIS_ADDR: redis:6379
+  REDIS_CACHE_TTL_SEC: "300"
+  OTEL_TRACING_ENABLED: "true"
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+  OTEL_TRACE_SAMPLING_ENABLED: "true"
+  OTEL_TRACE_SAMPLE_RATIO: "1.0"
+  LOG_LEVEL: info
+  ELASTICSEARCH_URL: http://elasticsearch:9200
+  # Same as browser-reachable API URL (manifest links + worker WS payloads).
+  PUBLIC_BASE_URL: http://localhost:8080
+  # GET /videos/search response cache in Redis (seconds). 0 = disable search result caching.
+  REDIS_SEARCH_CACHE_TTL_SEC: "60"
+  ELASTICSEARCH_INDEX_VIDEOS: videos
+  # Worker → API WebSocket fan-out (Redis). Same channel on api + worker.
+  WS_EVENT_CHANNEL: video-demo:ws
+
+services:
+  localstack:
+    image: localstack/localstack:3
+    labels:
+      collect_logs: "true"
+    ports:
+      - "4566:4566"
+    environment:
+      SERVICES: s3,sqs
+      DEBUG: "0"
+    volumes:
+      - localstack_data:/var/lib/localstack
+
+  mongodb:
+    image: mongo:7
+    labels:
+      collect_logs: "true"
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  redis:
+    image: redis:7-alpine
+    labels:
+      collect_logs: "true"
+    ports:
+      - "6379:6379"
+
+  # Step 1 — distributed tracing UI + OTLP (OTEL_* in .env / x-api-worker-env)
+  jaeger:
+    image: jaegertracing/all-in-one:1.57
+    labels:
+      collect_logs: "true"
+    ports:
+      - "16686:16686" # Jaeger UI
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
+
+  # Logging part 2 — Elasticsearch + Kibana (Filebeat ships container logs)
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+    labels:
+      collect_logs: "true"
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -sf 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s' >/dev/null || exit 1",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 60s
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.15.3
+    labels:
+      collect_logs: "true"
+    ports:
+      - "5601:5601"
+    environment:
+      ELASTICSEARCH_HOSTS: '["http://elasticsearch:9200"]'
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    labels:
+      collect_logs: "true"
+    ports:
+      - "8080:8080"
+    environment:
+      <<: *api-worker-env
+      HTTP_ADDR: ":8080"
+      CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
+    depends_on:
+      - jaeger
+      - mongodb
+      - redis
+      - localstack
+
+  worker:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    labels:
+      collect_logs: "true"
+    environment:
+      <<: *api-worker-env
+    depends_on:
+      jaeger:
+        condition: service_started
+      mongodb:
+        condition: service_started
+      redis:
+        condition: service_started
+      localstack:
+        condition: service_started
+      elasticsearch:
+        condition: service_healthy
+
+  # Logging part 3 — ship Docker stdout logs to Elasticsearch.
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.15.3
+    labels:
+      collect_logs: "true"
+    user: root
+    command: ["filebeat", "-e", "--strict.perms=false"]
+    volumes:
+      - ./ops/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Host `go run` + LOG_FILE=.../var/host-logs/*.log (see internal/applog)
+      - ./var/host-logs:/host-dev-logs:ro
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+volumes:
+  localstack_data:
+  mongo_data:
+  es_data:

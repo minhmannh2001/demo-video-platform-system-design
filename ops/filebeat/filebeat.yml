@@ -1,0 +1,64 @@
+filebeat.inputs:
+  - type: container
+    enabled: true
+    paths:
+      - /var/lib/docker/containers/*/*.log
+    stream: all
+    processors:
+      - add_docker_metadata:
+          host: unix:///var/run/docker.sock
+      # Docker json-file line wraps app log in {"log":"...\\n",...}; after container parsing, `message` is slog JSON.
+      - decode_json_fields:
+          fields: ["message"]
+          target: ""
+          overwrite_keys: true
+          expand_keys: true
+          max_depth: 2
+          add_error_key: true
+          ignore_failure: true
+
+  # Host/local `go run`: set LOG_FILE under var/host-logs/ and mount that dir below.
+  - type: filestream
+    id: host-json-logs
+    enabled: true
+    paths:
+      - /host-dev-logs/*.log
+    parsers:
+      - ndjson:
+          keys_under_root: true
+          overwrite_keys: true
+          expand_keys: true
+          add_error_key: true
+
+# Drop only Docker-backed events missing collect_logs=true (do not drop filestream events).
+processors:
+  - drop_event:
+      when:
+        and:
+          - has_fields: ["container.id"]
+          - not:
+              equals:
+                container.labels.collect_logs: "true"
+  - add_host_metadata: ~
+  - add_cloud_metadata: ~
+
+setup.ilm.enabled: false
+setup.template.enabled: true
+setup.template.name: logs-video-demo
+setup.template.pattern: logs-video-demo-*
+# Exact-match IDs for Kibana / KQL (avoid dynamic text mapping → weak search + "Analysis not available" UX).
+setup.template.append_fields:
+  - name: trace_id
+    type: keyword
+  - name: span_id
+    type: keyword
+  - name: video_id
+    type: keyword
+  - name: request_id
+    type: keyword
+
+output.elasticsearch:
+  hosts: ["http://elasticsearch:9200"]
+  index: "logs-video-demo-%{+yyyy.MM.dd}"
+
+logging.level: info

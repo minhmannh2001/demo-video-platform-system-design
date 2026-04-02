@@ -29,7 +29,7 @@ vendor/
 .DS_Store
 Thumbs.db
 
-# Node / frontend (demo/web when added)
+# Node / frontend (web/)
 node_modules/
 dist/
 dist-ssr/
