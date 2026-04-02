@@ -18,6 +18,7 @@ import (
 	"video-platform/demo/internal/store"
 	"video-platform/demo/internal/tracing"
 	"video-platform/demo/internal/videometaqueue"
+	"video-platform/demo/internal/ws"
 
 	"github.com/go-chi/chi/v5"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
@@ -99,9 +100,15 @@ func main() {
 
 	h := handlers.New(cfg, awsCli.S3, awsCli.SQS, queueURL, metaQueueURL, videoStore, redisCache, metaPub, videoSearch)
 
+	wsSrv := ws.New(ws.Config{
+		AllowedOrigins: cfg.CORSOrigins,
+		Token:          cfg.WebSocketToken,
+	})
+
 	root := chi.NewRouter()
 	root.Use(handlers.RequestLogMiddleware())
 	root.Use(handlers.CORSMiddleware(cfg.CORSOrigins))
+	root.Get("/ws", wsSrv.ServeHTTP)
 	root.Mount("/", h.Routes())
 
 	handler := tracing.WrapHandler(root)

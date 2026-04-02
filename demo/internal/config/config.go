@@ -30,6 +30,8 @@ type Config struct {
 	SearchCacheTTLSec int
 	CORSOrigins       []string
 	PublicBaseURL     string
+	// WebSocketToken optional; non-empty requires ?token= on GET /ws upgrade (see internal/ws).
+	WebSocketToken string
 }
 
 func Load() Config {
@@ -68,6 +70,7 @@ func Load() Config {
 		SearchCacheTTLSec:        searchCacheTTL,
 		CORSOrigins:              cors,
 		PublicBaseURL:            strings.TrimRight(getenv("PUBLIC_BASE_URL", "http://localhost:8080"), "/"),
+		WebSocketToken:           strings.TrimSpace(os.Getenv("WEBSOCKET_TOKEN")),
 	}
 }
 

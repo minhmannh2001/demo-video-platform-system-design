@@ -13,6 +13,12 @@ const otlpProxy = {
     changeOrigin: true,
     rewrite: (p: string) => p.replace(/^\/otel/, ''),
   },
+  /** Same-origin WS during dev if you point the client at `ws://${location.host}/ws` and set VITE_API_URL empty + use relative API — optional. */
+  '/ws': {
+    target: 'http://localhost:8080',
+    changeOrigin: true,
+    ws: true,
+  },
 }
 
 export default defineConfig({
