@@ -47,6 +47,11 @@ type Encoder interface {
 	EncodeToHLS(ctx context.Context, inputPath, outputDir string) error
 }
 
+var defaultRenditions = []models.Rendition{
+	{Quality: "360p", Width: 640, Height: 360, Bitrate: 900_000, Key: "360p/prog.m3u8"},
+	{Quality: "720p", Width: 1280, Height: 720, Bitrate: 2_500_000, Key: "720p/prog.m3u8"},
+}
+
 // CacheInvalidator drops cached metadata after a successful encode.
 type CacheInvalidator interface {
 	Del(ctx context.Context, id string) error
@@ -182,7 +187,7 @@ func (p *Processor) processVideo(ctx context.Context, id string) error {
 			attribute.String("worker.mongo.op", "mark_ready"),
 			vid,
 		)
-		err := p.d.Store.MarkReady(c, id, prefix, 0, "", nil)
+		err := p.d.Store.MarkReady(c, id, prefix, 0, streamutil.ThumbnailStreamRelative, defaultRenditions)
 		tracing.Finish(sp, err)
 		if err != nil {
 			return err

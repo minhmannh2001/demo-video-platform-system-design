@@ -97,11 +97,29 @@ func (e *fakeEncoder) EncodeToHLS(ctx context.Context, inputPath, outputDir stri
 	if e.err != nil {
 		return e.err
 	}
-	// Minimal valid-looking HLS tree (no real ffmpeg in unit test).
-	if err := os.WriteFile(filepath.Join(outputDir, "master.m3u8"), []byte("#EXTM3U\n#EXT-X-VERSION:3\n#EXTINF:1.0,\nseg0.ts\n#EXT-X-ENDLIST\n"), 0o644); err != nil {
+	// Minimal multi-bitrate-like tree (no real ffmpeg in unit test).
+	if err := os.MkdirAll(filepath.Join(outputDir, "360p"), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(outputDir, "seg0.ts"), []byte{0, 0, 0}, 0o644)
+	if err := os.MkdirAll(filepath.Join(outputDir, "720p"), 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(outputDir, "master.m3u8"), []byte("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=900000,RESOLUTION=640x360\n360p/prog.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=2500000,RESOLUTION=1280x720\n720p/prog.m3u8\n"), 0o644); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(outputDir, "thumbnail.jpg"), []byte{0xff, 0xd8, 0xff, 0xd9}, 0o644); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(outputDir, "360p", "prog.m3u8"), []byte("#EXTM3U\n#EXTINF:1.0,\nseg0.ts\n#EXT-X-ENDLIST\n"), 0o644); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(outputDir, "360p", "seg0.ts"), []byte{0, 0, 0}, 0o644); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(outputDir, "720p", "prog.m3u8"), []byte("#EXTM3U\n#EXTINF:1.0,\nseg0.ts\n#EXT-X-ENDLIST\n"), 0o644); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(outputDir, "720p", "seg0.ts"), []byte{0, 0, 0}, 0o644)
 }
 
 type fakeCache struct {
@@ -215,16 +233,28 @@ func TestHandleMessage_success(t *testing.T) {
 	if !strings.HasPrefix(mr.prefix, "videos/"+id+"/hls") {
 		t.Fatalf("prefix %q", mr.prefix)
 	}
-	var hasMaster, hasSeg bool
+	if mr.thumbnailKey != "thumbnail.jpg" {
+		t.Fatalf("thumbnail key: %q", mr.thumbnailKey)
+	}
+	if len(mr.renditions) != 2 {
+		t.Fatalf("renditions: %+v", mr.renditions)
+	}
+	var hasMaster, hasThumb, has360, has720 bool
 	for _, k := range s3f.putKeys {
 		if strings.HasSuffix(k, "/hls/master.m3u8") {
 			hasMaster = true
 		}
-		if strings.HasSuffix(k, "/hls/seg0.ts") {
-			hasSeg = true
+		if strings.HasSuffix(k, "/hls/thumbnail.jpg") {
+			hasThumb = true
+		}
+		if strings.HasSuffix(k, "/hls/360p/prog.m3u8") {
+			has360 = true
+		}
+		if strings.HasSuffix(k, "/hls/720p/prog.m3u8") {
+			has720 = true
 		}
 	}
-	if !hasMaster || !hasSeg {
+	if !hasMaster || !hasThumb || !has360 || !has720 {
 		t.Fatalf("put keys: %v", s3f.putKeys)
 	}
 	if len(ca.deleted) != 1 || ca.deleted[0] != id {

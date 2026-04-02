@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -38,5 +39,22 @@ func TestFFmpegEncoder_Integration(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(outDir, "master.m3u8")); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(outDir, "thumbnail.jpg")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(outDir, "360p", "prog.m3u8")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(outDir, "720p", "prog.m3u8")); err != nil {
+		t.Fatal(err)
+	}
+	master, err := os.ReadFile(filepath.Join(outDir, "master.m3u8"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ms := string(master)
+	if !strings.Contains(ms, "360p/prog.m3u8") || !strings.Contains(ms, "720p/prog.m3u8") {
+		t.Fatalf("master should reference both variant playlists:\n%s", ms)
 	}
 }
