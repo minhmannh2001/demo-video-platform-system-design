@@ -80,7 +80,10 @@ func TestVideoStore_Mongo_Integration(t *testing.T) {
 		t.Fatalf("after UpdateMetadata: %+v err=%v", got, err)
 	}
 
-	if err := s.MarkReady(ctx, id, "videos/"+id+"/hls/", 42); err != nil {
+	if err := s.MarkReady(ctx, id, "videos/"+id+"/hls/", 42, "", []models.Rendition{
+		{Quality: "360p", Width: 640, Height: 360, Key: "360p/prog.m3u8"},
+		{Quality: "720p", Width: 1280, Height: 720, Key: "720p/prog.m3u8"},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	got, err = s.GetByID(ctx, id)
@@ -89,6 +92,9 @@ func TestVideoStore_Mongo_Integration(t *testing.T) {
 	}
 	if got.Status != models.StatusReady || got.EncodedPrefix == "" || got.DurationSec != 42 {
 		t.Fatalf("after MarkReady: %+v", got)
+	}
+	if len(got.Renditions) != 2 {
+		t.Fatalf("expected renditions persisted, got: %+v", got.Renditions)
 	}
 
 	if err := s.MarkFailed(ctx, id); err != nil {

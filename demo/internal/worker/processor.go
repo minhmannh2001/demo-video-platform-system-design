@@ -38,7 +38,7 @@ type S3GetPut interface {
 // VideoStore is the subset of persistence used by the encoder worker.
 type VideoStore interface {
 	GetByID(ctx context.Context, id string) (*models.Video, error)
-	MarkReady(ctx context.Context, id, encodedPrefix string, durationSec int) error
+	MarkReady(ctx context.Context, id, encodedPrefix string, durationSec int, thumbnailKey string, renditions []models.Rendition) error
 	MarkFailed(ctx context.Context, id string) error
 }
 
@@ -182,7 +182,7 @@ func (p *Processor) processVideo(ctx context.Context, id string) error {
 			attribute.String("worker.mongo.op", "mark_ready"),
 			vid,
 		)
-		err := p.d.Store.MarkReady(c, id, prefix, 0)
+		err := p.d.Store.MarkReady(c, id, prefix, 0, "", nil)
 		tracing.Finish(sp, err)
 		if err != nil {
 			return err

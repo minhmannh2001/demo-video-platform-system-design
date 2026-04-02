@@ -13,6 +13,8 @@ func TestContentTypeByFilename(t *testing.T) {
 		{"playlist.M3U8", "application/vnd.apple.mpegurl"},
 		{"segment001.ts", "video/mp2t"},
 		{"chunk.TS", "video/mp2t"},
+		{"thumb.jpg", "image/jpeg"},
+		{"poster.JPEG", "image/jpeg"},
 		{"file.mp4", "application/octet-stream"},
 		{"", "application/octet-stream"},
 	}
@@ -80,6 +82,49 @@ func TestManifestURL(t *testing.T) {
 	want2 := "https://api.example.com/stream/" + valid + "/master.m3u8"
 	if u2 != want2 {
 		t.Fatalf("got %q want %q", u2, want2)
+	}
+	if ManifestURL("http://x", "not-a-valid-objectid") != "" {
+		t.Fatal("invalid video id should yield empty manifest URL")
+	}
+}
+
+func TestStreamPublicURL(t *testing.T) {
+	valid := "507f1f77bcf86cd799439011"
+	u, err := StreamPublicURL("http://localhost:8080/", valid, "360p/index.m3u8")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "http://localhost:8080/stream/507f1f77bcf86cd799439011/360p/index.m3u8"
+	if u != want {
+		t.Fatalf("got %q want %q", u, want)
+	}
+	_, err = StreamPublicURL("http://x", valid, "../evil.m3u8")
+	if err == nil {
+		t.Fatal("want error on traversal")
+	}
+}
+
+func TestThumbnailURL(t *testing.T) {
+	valid := "507f1f77bcf86cd799439011"
+	u := ThumbnailURL("http://localhost:8080", valid)
+	want := "http://localhost:8080/stream/507f1f77bcf86cd799439011/thumbnail.jpg"
+	if u != want {
+		t.Fatalf("got %q want %q", u, want)
+	}
+	if ThumbnailURL("http://x", "bad") != "" {
+		t.Fatal("invalid id should yield empty thumbnail URL")
+	}
+}
+
+func TestRenditionPlaylistURL(t *testing.T) {
+	valid := "507f1f77bcf86cd799439011"
+	u, err := RenditionPlaylistURL("https://api.example.com", valid, "720p/main.m3u8")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "https://api.example.com/stream/507f1f77bcf86cd799439011/720p/main.m3u8"
+	if u != want {
+		t.Fatalf("got %q want %q", u, want)
 	}
 }
 

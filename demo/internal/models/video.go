@@ -16,17 +16,28 @@ const (
 )
 
 type Video struct {
-	ID            string    `bson:"_id" json:"id"`
-	Title         string    `bson:"title" json:"title"`
-	Description   string    `bson:"description" json:"description"`
-	Uploader      string    `bson:"uploader" json:"uploader"`
-	Visibility    string    `bson:"visibility,omitempty" json:"visibility,omitempty"`
-	RawS3Key      string    `bson:"raw_s3_key" json:"raw_s3_key"`
-	EncodedPrefix string    `bson:"encoded_prefix,omitempty" json:"encoded_prefix,omitempty"`
-	Status        string    `bson:"status" json:"status"`
-	DurationSec   int       `bson:"duration_sec,omitempty" json:"duration_sec,omitempty"`
-	CreatedAt     time.Time `bson:"created_at" json:"created_at"`
-	UpdatedAt     time.Time `bson:"updated_at" json:"updated_at"`
+	ID            string      `bson:"_id" json:"id"`
+	Title         string      `bson:"title" json:"title"`
+	Description   string      `bson:"description" json:"description"`
+	Uploader      string      `bson:"uploader" json:"uploader"`
+	Visibility    string      `bson:"visibility,omitempty" json:"visibility,omitempty"`
+	RawS3Key      string      `bson:"raw_s3_key" json:"raw_s3_key"`
+	EncodedPrefix string      `bson:"encoded_prefix,omitempty" json:"encoded_prefix,omitempty"`
+	ThumbnailKey  string      `bson:"thumbnail_key,omitempty" json:"thumbnail_key,omitempty"` // relative path under stream URL, e.g. thumbnail.jpg
+	Renditions    []Rendition `bson:"renditions,omitempty" json:"renditions,omitempty"`
+	Status        string      `bson:"status" json:"status"`
+	DurationSec   int         `bson:"duration_sec,omitempty" json:"duration_sec,omitempty"`
+	CreatedAt     time.Time   `bson:"created_at" json:"created_at"`
+	UpdatedAt     time.Time   `bson:"updated_at" json:"updated_at"`
+}
+
+// Rendition describes one encoded quality profile produced from a source video.
+type Rendition struct {
+	Quality string `bson:"quality" json:"quality"` // e.g. "360p", "720p"
+	Width   int    `bson:"width,omitempty" json:"width,omitempty"`
+	Height  int    `bson:"height,omitempty" json:"height,omitempty"`
+	Bitrate int    `bson:"bitrate,omitempty" json:"bitrate,omitempty"` // average video bitrate (bps)
+	Key     string `bson:"key" json:"key"`                             // relative playlist path under /stream/{videoID}/
 }
 
 // EffectiveVisibility returns VisibilityPublic when the document predates the visibility field.

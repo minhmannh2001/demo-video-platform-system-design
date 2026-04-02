@@ -104,6 +104,8 @@ func (s *VideoStore) GetByID(ctx context.Context, id string) (*models.Video, err
 		Visibility    string             `bson:"visibility"`
 		RawS3Key      string             `bson:"raw_s3_key"`
 		EncodedPrefix string             `bson:"encoded_prefix"`
+		ThumbnailKey  string             `bson:"thumbnail_key"`
+		Renditions    []models.Rendition `bson:"renditions"`
 		Status        string             `bson:"status"`
 		DurationSec   int                `bson:"duration_sec"`
 		CreatedAt     time.Time          `bson:"created_at"`
@@ -124,6 +126,8 @@ func (s *VideoStore) GetByID(ctx context.Context, id string) (*models.Video, err
 		Visibility:    raw.Visibility,
 		RawS3Key:      raw.RawS3Key,
 		EncodedPrefix: raw.EncodedPrefix,
+		ThumbnailKey:  raw.ThumbnailKey,
+		Renditions:    raw.Renditions,
 		Status:        raw.Status,
 		DurationSec:   raw.DurationSec,
 		CreatedAt:     raw.CreatedAt,
@@ -155,6 +159,8 @@ func (s *VideoStore) List(ctx context.Context, limit int64) ([]models.Video, err
 			Visibility    string             `bson:"visibility"`
 			RawS3Key      string             `bson:"raw_s3_key"`
 			EncodedPrefix string             `bson:"encoded_prefix"`
+			ThumbnailKey  string             `bson:"thumbnail_key"`
+			Renditions    []models.Rendition `bson:"renditions"`
 			Status        string             `bson:"status"`
 			DurationSec   int                `bson:"duration_sec"`
 			CreatedAt     time.Time          `bson:"created_at"`
@@ -175,6 +181,8 @@ func (s *VideoStore) List(ctx context.Context, limit int64) ([]models.Video, err
 			Visibility:    vis,
 			RawS3Key:      raw.RawS3Key,
 			EncodedPrefix: raw.EncodedPrefix,
+			ThumbnailKey:  raw.ThumbnailKey,
+			Renditions:    raw.Renditions,
 			Status:        raw.Status,
 			DurationSec:   raw.DurationSec,
 			CreatedAt:     raw.CreatedAt,
@@ -226,6 +234,8 @@ func (s *VideoStore) ForEachVideoBatch(ctx context.Context, batchSize int, fn fu
 			Visibility    string             `bson:"visibility"`
 			RawS3Key      string             `bson:"raw_s3_key"`
 			EncodedPrefix string             `bson:"encoded_prefix"`
+			ThumbnailKey  string             `bson:"thumbnail_key"`
+			Renditions    []models.Rendition `bson:"renditions"`
 			Status        string             `bson:"status"`
 			DurationSec   int                `bson:"duration_sec"`
 			CreatedAt     time.Time          `bson:"created_at"`
@@ -246,6 +256,8 @@ func (s *VideoStore) ForEachVideoBatch(ctx context.Context, batchSize int, fn fu
 			Visibility:    vis,
 			RawS3Key:      raw.RawS3Key,
 			EncodedPrefix: raw.EncodedPrefix,
+			ThumbnailKey:  raw.ThumbnailKey,
+			Renditions:    raw.Renditions,
 			Status:        raw.Status,
 			DurationSec:   raw.DurationSec,
 			CreatedAt:     raw.CreatedAt,
@@ -263,20 +275,25 @@ func (s *VideoStore) ForEachVideoBatch(ctx context.Context, batchSize int, fn fu
 	return flush()
 }
 
-func (s *VideoStore) MarkReady(ctx context.Context, id, encodedPrefix string, durationSec int) error {
+func (s *VideoStore) MarkReady(ctx context.Context, id, encodedPrefix string, durationSec int, thumbnailKey string, renditions []models.Rendition) error {
 	oid, err := primitive.ObjectIDFromHex(id)
 	if err != nil {
 		return err
 	}
 	now := time.Now().UTC()
-	_, err = s.coll.UpdateOne(ctx, bson.M{"_id": oid}, bson.M{
-		"$set": bson.M{
-			"status":         models.StatusReady,
-			"encoded_prefix": encodedPrefix,
-			"duration_sec":   durationSec,
-			"updated_at":     now,
-		},
-	})
+	set := bson.M{
+		"status":         models.StatusReady,
+		"encoded_prefix": encodedPrefix,
+		"duration_sec":   durationSec,
+		"updated_at":     now,
+	}
+	if thumbnailKey != "" {
+		set["thumbnail_key"] = thumbnailKey
+	}
+	if len(renditions) > 0 {
+		set["renditions"] = renditions
+	}
+	_, err = s.coll.UpdateOne(ctx, bson.M{"_id": oid}, bson.M{"$set": set})
 	return err
 }
 

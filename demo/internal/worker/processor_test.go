@@ -61,8 +61,9 @@ type fakeStore struct {
 }
 
 type markReadyCall struct {
-	id, prefix string
-	duration   int
+	id, prefix, thumbnailKey string
+	duration                 int
+	renditions               []models.Rendition
 }
 
 func (f *fakeStore) GetByID(ctx context.Context, id string) (*models.Video, error) {
@@ -72,8 +73,14 @@ func (f *fakeStore) GetByID(ctx context.Context, id string) (*models.Video, erro
 	return f.byID[id], nil
 }
 
-func (f *fakeStore) MarkReady(ctx context.Context, id, encodedPrefix string, durationSec int) error {
-	f.markReady = append(f.markReady, markReadyCall{id: id, prefix: encodedPrefix, duration: durationSec})
+func (f *fakeStore) MarkReady(ctx context.Context, id, encodedPrefix string, durationSec int, thumbnailKey string, renditions []models.Rendition) error {
+	f.markReady = append(f.markReady, markReadyCall{
+		id:           id,
+		prefix:       encodedPrefix,
+		duration:     durationSec,
+		thumbnailKey: thumbnailKey,
+		renditions:   renditions,
+	})
 	return nil
 }
 
@@ -109,13 +116,13 @@ func (f *fakeCache) Del(ctx context.Context, id string) error {
 func testProcessor(t *testing.T, s3f *fakeS3, st *fakeStore, enc Encoder, rawBucket, encBucket string) *Processor {
 	t.Helper()
 	return NewProcessor(Deps{
-		S3:              s3f,
-		RawBucket:       rawBucket,
-		EncodedBucket:   encBucket,
-		Store:           st,
-		Encoder:         enc,
-		Cache:           nil,
-		TempDirParent:   t.TempDir(),
+		S3:            s3f,
+		RawBucket:     rawBucket,
+		EncodedBucket: encBucket,
+		Store:         st,
+		Encoder:       enc,
+		Cache:         nil,
+		TempDirParent: t.TempDir(),
 	})
 }
 
