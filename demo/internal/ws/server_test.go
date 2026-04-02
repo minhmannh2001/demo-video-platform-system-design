@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -124,4 +125,177 @@ func TestServer_originNotAllowed(t *testing.T) {
 func wsURLFromHTTP(httpURL, path string) string {
 	u := strings.TrimPrefix(httpURL, "http:")
 	return "ws:" + u + path
+}
+
+func readJSONMap(t *testing.T, conn *websocket.Conn) map[string]any {
+	t.Helper()
+	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	_, data, err := conn.ReadMessage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var msg map[string]any
+	if err := json.Unmarshal(data, &msg); err != nil {
+		t.Fatalf("json: %v body=%s", err, data)
+	}
+	return msg
+}
+
+func TestServer_subscribe_video_and_catalog(t *testing.T) {
+	s := New(Config{AllowedOrigins: []string{}})
+	srv := httptest.NewServer(http.HandlerFunc(s.ServeHTTP))
+	t.Cleanup(srv.Close)
+
+	wsURL := wsURLFromHTTP(srv.URL, "/")
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+
+	hello := readJSONMap(t, conn)
+	if hello["type"] != "hello" {
+		t.Fatalf("hello = %v", hello)
+	}
+
+	mustWriteJSON(t, conn, `{"type":"subscribe","v":1,"video_id":"vid1"}`)
+	sub := readJSONMap(t, conn)
+	if sub["type"] != "subscribed" || sub["topic"] != "video:vid1" {
+		t.Fatalf("sub = %v", sub)
+	}
+	if s.Hub().SubscriberCount("video:vid1") != 1 {
+		t.Fatalf("hub count = %d", s.Hub().SubscriberCount("video:vid1"))
+	}
+
+	mustWriteJSON(t, conn, `{"type":"subscribe","v":1,"channel":"uploads"}`)
+	sub2 := readJSONMap(t, conn)
+	if sub2["type"] != "subscribed" || sub2["topic"] != TopicCatalog {
+		t.Fatalf("sub2 = %v", sub2)
+	}
+	if s.Hub().SubscriberCount(TopicCatalog) != 1 {
+		t.Fatalf("catalog subs = %d", s.Hub().SubscriberCount(TopicCatalog))
+	}
+}
+
+func TestServer_subscribe_idempotent_sameTopic(t *testing.T) {
+	s := New(Config{AllowedOrigins: []string{}})
+	srv := httptest.NewServer(http.HandlerFunc(s.ServeHTTP))
+	t.Cleanup(srv.Close)
+	conn, _, err := websocket.DefaultDialer.Dial(wsURLFromHTTP(srv.URL, "/"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	_ = readJSONMap(t, conn)
+	mustWriteJSON(t, conn, `{"type":"subscribe","v":1,"video_id":"x"}`)
+	_ = readJSONMap(t, conn)
+	mustWriteJSON(t, conn, `{"type":"subscribe","v":1,"video_id":"x"}`)
+	again := readJSONMap(t, conn)
+	if again["type"] != "subscribed" {
+		t.Fatalf("%v", again)
+	}
+	if s.Hub().SubscriberCount("video:x") != 1 {
+		t.Fatalf("hub = %d", s.Hub().SubscriberCount("video:x"))
+	}
+}
+
+func TestServer_subscribe_subscriptionLimit(t *testing.T) {
+	s := New(Config{AllowedOrigins: []string{}})
+	srv := httptest.NewServer(http.HandlerFunc(s.ServeHTTP))
+	t.Cleanup(srv.Close)
+	conn, _, err := websocket.DefaultDialer.Dial(wsURLFromHTTP(srv.URL, "/"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	_ = readJSONMap(t, conn)
+	for i := range MaxSubscriptionsPerConn {
+		mustWriteJSON(t, conn, `{"type":"subscribe","v":1,"video_id":"`+strconv.Itoa(i)+`"}`)
+		msg := readJSONMap(t, conn)
+		if msg["type"] != "subscribed" {
+			t.Fatalf("i=%d msg=%v", i, msg)
+		}
+	}
+	mustWriteJSON(t, conn, `{"type":"subscribe","v":1,"video_id":"overflow"}`)
+	errMsg := readJSONMap(t, conn)
+	if errMsg["type"] != "error" || errMsg["code"] != ErrSubscriptionLimit {
+		t.Fatalf("%v", errMsg)
+	}
+}
+
+func TestServer_subscribe_rateLimited(t *testing.T) {
+	s := New(Config{AllowedOrigins: []string{}})
+	srv := httptest.NewServer(http.HandlerFunc(s.ServeHTTP))
+	t.Cleanup(srv.Close)
+	conn, _, err := websocket.DefaultDialer.Dial(wsURLFromHTTP(srv.URL, "/"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	_ = readJSONMap(t, conn)
+	n := SubscribeRateMaxSubscribe
+	for i := range n {
+		id := "r" + strconv.Itoa(i)
+		mustWriteJSON(t, conn, `{"type":"subscribe","v":1,"video_id":"`+id+`"}`)
+		msg := readJSONMap(t, conn)
+		if msg["type"] != "subscribed" {
+			t.Fatalf("i=%d %v", i, msg)
+		}
+		mustWriteJSON(t, conn, `{"type":"unsubscribe","v":1,"video_id":"`+id+`"}`)
+		un := readJSONMap(t, conn)
+		if un["type"] != "unsubscribed" {
+			t.Fatalf("i=%d %v", i, un)
+		}
+	}
+	mustWriteJSON(t, conn, `{"type":"subscribe","v":1,"video_id":"one-too-many"}`)
+	errMsg := readJSONMap(t, conn)
+	if errMsg["type"] != "error" || errMsg["code"] != ErrRateLimited {
+		t.Fatalf("%v", errMsg)
+	}
+}
+
+func TestServer_unsubscribe(t *testing.T) {
+	s := New(Config{AllowedOrigins: []string{}})
+	srv := httptest.NewServer(http.HandlerFunc(s.ServeHTTP))
+	t.Cleanup(srv.Close)
+	conn, _, err := websocket.DefaultDialer.Dial(wsURLFromHTTP(srv.URL, "/"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	_ = readJSONMap(t, conn)
+	mustWriteJSON(t, conn, `{"type":"subscribe","v":1,"video_id":"u1"}`)
+	_ = readJSONMap(t, conn)
+	mustWriteJSON(t, conn, `{"type":"unsubscribe","v":1,"video_id":"u1"}`)
+	un := readJSONMap(t, conn)
+	if un["type"] != "unsubscribed" || un["topic"] != "video:u1" {
+		t.Fatalf("%v", un)
+	}
+	if s.Hub().SubscriberCount("video:u1") != 0 {
+		t.Fatalf("hub = %d", s.Hub().SubscriberCount("video:u1"))
+	}
+}
+
+func TestServer_ping_pong(t *testing.T) {
+	s := New(Config{AllowedOrigins: []string{}})
+	srv := httptest.NewServer(http.HandlerFunc(s.ServeHTTP))
+	t.Cleanup(srv.Close)
+	conn, _, err := websocket.DefaultDialer.Dial(wsURLFromHTTP(srv.URL, "/"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	_ = readJSONMap(t, conn)
+	mustWriteJSON(t, conn, `{"type":"ping","v":1}`)
+	pong := readJSONMap(t, conn)
+	if pong["type"] != "pong" {
+		t.Fatalf("%v", pong)
+	}
+}
+
+func mustWriteJSON(t *testing.T, conn *websocket.Conn, s string) {
+	t.Helper()
+	if err := conn.WriteMessage(websocket.TextMessage, []byte(s)); err != nil {
+		t.Fatal(err)
+	}
 }
