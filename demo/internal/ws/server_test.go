@@ -276,6 +276,33 @@ func TestServer_unsubscribe(t *testing.T) {
 	}
 }
 
+func TestServer_hubPublish_deliversToSubscriber(t *testing.T) {
+	s := New(Config{AllowedOrigins: []string{}})
+	srv := httptest.NewServer(http.HandlerFunc(s.ServeHTTP))
+	t.Cleanup(srv.Close)
+	conn, _, err := websocket.DefaultDialer.Dial(wsURLFromHTTP(srv.URL, "/"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	_ = readJSONMap(t, conn)
+	mustWriteJSON(t, conn, `{"type":"subscribe","v":1,"video_id":"pub1"}`)
+	_ = readJSONMap(t, conn)
+
+	body := []byte(`{"type":"video.updated","v":1,"payload":{"video_id":"pub1","status":"ready"}}`)
+	if n := s.Hub().Publish("video:pub1", body); n != 1 {
+		t.Fatalf("Publish n=%d want 1", n)
+	}
+	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	_, data, err := conn.ReadMessage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != string(body) {
+		t.Fatalf("got %s want %s", data, body)
+	}
+}
+
 func TestServer_ping_pong(t *testing.T) {
 	s := New(Config{AllowedOrigins: []string{}})
 	srv := httptest.NewServer(http.HandlerFunc(s.ServeHTTP))

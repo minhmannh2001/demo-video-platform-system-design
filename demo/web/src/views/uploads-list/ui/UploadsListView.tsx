@@ -4,6 +4,7 @@ import { buttonVariants } from '@/components/ui/button'
 import { StatusBadge } from '@/entities/video'
 import type { Video } from '@/entities/video'
 import { listVideos } from '@/shared/api/video-api'
+import { getWebSocketUrl } from '@/shared/config/env'
 import { useToastOnError } from '@/shared/lib/useToastOnError'
 import { PageMain } from '@/shared/ui/PageChrome'
 import { AppHeader } from '@/widgets/app-header'
@@ -33,8 +34,27 @@ export function UploadsListView() {
 
   useEffect(() => {
     void load()
-    const t = window.setInterval(() => void load(), 5000)
-    return () => window.clearInterval(t)
+    const slowPoll = window.setInterval(() => void load(), 60_000)
+    const url = getWebSocketUrl()
+    const socket = new WebSocket(url)
+    socket.onopen = () => {
+      socket.send(
+        JSON.stringify({ type: 'subscribe', v: 1, channel: 'uploads' }),
+      )
+    }
+    socket.onmessage = (ev) => {
+      if (typeof ev.data !== 'string') return
+      try {
+        const msg = JSON.parse(ev.data) as { type?: string }
+        if (msg.type === 'catalog.invalidate') void load()
+      } catch {
+        /* ignore */
+      }
+    }
+    return () => {
+      window.clearInterval(slowPoll)
+      socket.close()
+    }
   }, [load])
 
   return (

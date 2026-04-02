@@ -18,32 +18,36 @@ import (
 	"video-platform/demo/internal/streamutil"
 	"video-platform/demo/internal/tracing"
 	"video-platform/demo/internal/videometaqueue"
+	"video-platform/demo/internal/ws"
+	"video-platform/demo/internal/wsevents"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/go-chi/chi/v5"
 	"github.com/redis/go-redis/v9"
-	"go.opentelemetry.io/otel/attribute"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type Handler struct {
-	cfg                config.Config
-	s3                 S3API
-	sqs                SQSAPI
-	queueURL           string
-	metadataQueueURL   string
-	metadataPublisher  videometaqueue.Publisher
-	videos             VideoRepository
-	videoCache         VideoCacher
-	videoSearch        VideoSearch
+	cfg               config.Config
+	s3                S3API
+	sqs               SQSAPI
+	queueURL          string
+	metadataQueueURL  string
+	metadataPublisher videometaqueue.Publisher
+	videos            VideoRepository
+	videoCache        VideoCacher
+	videoSearch       VideoSearch
+	wsBridge          *wsevents.Bridge
 }
 
 // New wires HTTP handlers with concrete AWS/Mongo/Redis clients from main.
 // metadataPublisher may be nil; it is treated as videometaqueue.Noop.
 // videoSearch may be nil; GET /videos/search returns 503 when unset.
-func New(cfg config.Config, s3cli S3API, sqscli SQSAPI, encodeQueueURL, metadataQueueURL string, videos VideoRepository, vc VideoCacher, metadataPublisher videometaqueue.Publisher, videoSearch VideoSearch) *Handler {
+// wsBridge may be nil; realtime WebSocket push is disabled.
+func New(cfg config.Config, s3cli S3API, sqscli SQSAPI, encodeQueueURL, metadataQueueURL string, videos VideoRepository, vc VideoCacher, metadataPublisher videometaqueue.Publisher, videoSearch VideoSearch, wsBridge *wsevents.Bridge) *Handler {
 	if metadataPublisher == nil {
 		metadataPublisher = videometaqueue.Noop{}
 	}
@@ -57,7 +61,56 @@ func New(cfg config.Config, s3cli S3API, sqscli SQSAPI, encodeQueueURL, metadata
 		videos:            videos,
 		videoCache:        vc,
 		videoSearch:       videoSearch,
+		wsBridge:          wsBridge,
 	}
+}
+
+func (h *Handler) pushVideoWS(ctx context.Context, videoID, status string) {
+	if h.wsBridge == nil {
+		return
+	}
+	c, sp := tracing.Start(ctx, "ws.video.publish",
+		attribute.String("ws.event_type", ws.TypeVideoUpdated),
+		attribute.String("video.id", videoID),
+		attribute.String("video.status", status),
+	)
+	body, err := ws.EnvelopeVideoUpdatedFromStatus(h.cfg.PublicBaseURL, videoID, status)
+	if err != nil {
+		tracing.Finish(sp, err)
+		slog.WarnContext(ctx, "ws_video_envelope_failed", "video_id", videoID, "status", status, "error", err)
+		return
+	}
+	topic := "video:" + videoID
+	err = h.wsBridge.Publish(c, topic, body)
+	tracing.Finish(sp, err)
+	if err != nil {
+		slog.WarnContext(ctx, "ws_video_publish_failed", "video_id", videoID, "status", status, "topic", topic, "error", err)
+		return
+	}
+	slog.DebugContext(ctx, "ws_video_published", "video_id", videoID, "status", status, "topic", topic)
+}
+
+func (h *Handler) pushCatalogInvalidate(ctx context.Context) {
+	if h.wsBridge == nil {
+		return
+	}
+	c, sp := tracing.Start(ctx, "ws.catalog.publish",
+		attribute.String("ws.event_type", ws.TypeCatalogInvalidate),
+		attribute.String("ws.topic", ws.TopicCatalog),
+	)
+	body, err := ws.ServerEnvelopeCatalogInvalidate()
+	if err != nil {
+		tracing.Finish(sp, err)
+		slog.WarnContext(ctx, "ws_catalog_envelope_failed", "error", err)
+		return
+	}
+	err = h.wsBridge.Publish(c, ws.TopicCatalog, body)
+	tracing.Finish(sp, err)
+	if err != nil {
+		slog.WarnContext(ctx, "ws_catalog_publish_failed", "topic", ws.TopicCatalog, "error", err)
+		return
+	}
+	slog.DebugContext(ctx, "ws_catalog_published", "topic", ws.TopicCatalog)
 }
 
 func (h *Handler) publishVideoMetadata(ctx context.Context, ev videometaqueue.Event) {
@@ -227,6 +280,8 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 	slog.InfoContext(ctx, "video_record_created", "video_id", id, "status", v.Status)
 
 	h.publishVideoMetadata(ctx, videometaqueue.NewEvent(id, videometaqueue.OpCreated, v.UpdatedAt))
+	h.pushVideoWS(ctx, id, models.StatusProcessing)
+	h.pushCatalogInvalidate(ctx)
 
 	body, _ := json.Marshal(map[string]string{"video_id": id})
 	{
@@ -388,6 +443,7 @@ func (h *Handler) PatchVideo(w http.ResponseWriter, r *http.Request) {
 		tracing.Finish(sp, delErr)
 	}
 	h.publishVideoMetadata(ctx, videometaqueue.NewEvent(id, videometaqueue.OpUpdated, v.UpdatedAt))
+	h.pushCatalogInvalidate(ctx)
 	slog.InfoContext(ctx, "video_metadata_patched", "video_id", id)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(v)
@@ -530,6 +586,7 @@ func (h *Handler) DeleteVideo(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	h.publishVideoMetadata(ctx, videometaqueue.NewEvent(id, videometaqueue.OpDeleted, time.Now().UTC()))
+	h.pushCatalogInvalidate(ctx)
 	slog.InfoContext(ctx, "delete_video_complete", "video_id", id)
 	w.WriteHeader(http.StatusNoContent)
 }

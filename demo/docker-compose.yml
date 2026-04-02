@@ -18,6 +18,8 @@ x-api-worker-env: &api-worker-env
   OTEL_TRACE_SAMPLE_RATIO: "1.0"
   LOG_LEVEL: info
   ELASTICSEARCH_URL: http://elasticsearch:9200
+  # Worker → API WebSocket fan-out (Redis). Same channel on api + worker.
+  WS_EVENT_CHANNEL: video-demo:ws
 
 services:
   localstack:

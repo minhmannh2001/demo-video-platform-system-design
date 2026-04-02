@@ -8,7 +8,7 @@ import { makeVideo } from '@/test/fixtures/video'
 import { VideoWatchView } from './VideoWatchView'
 
 vi.mock('@/features/video-watch', () => ({
-  useVideoPolling: vi.fn(),
+  useVideoWatchFeed: vi.fn(),
 }))
 
 vi.mock('@/shared/api/video-api', async () => {
@@ -41,7 +41,7 @@ describe('VideoWatchView', () => {
   })
 
   it('shows loading', () => {
-    vi.mocked(watchFeature.useVideoPolling).mockReturnValue({
+    vi.mocked(watchFeature.useVideoWatchFeed).mockReturnValue({
       video: null,
       watch: null,
       error: null,
@@ -53,7 +53,7 @@ describe('VideoWatchView', () => {
   })
 
   it('shows error', () => {
-    vi.mocked(watchFeature.useVideoPolling).mockReturnValue({
+    vi.mocked(watchFeature.useVideoWatchFeed).mockReturnValue({
       video: null,
       watch: null,
       error: 'boom',
@@ -66,7 +66,7 @@ describe('VideoWatchView', () => {
 
   it('shows encoding message when processing', () => {
     const video = makeVideo({ status: 'processing' })
-    vi.mocked(watchFeature.useVideoPolling).mockReturnValue({
+    vi.mocked(watchFeature.useVideoWatchFeed).mockReturnValue({
       video,
       watch: { video_id: video.id, status: 'processing' },
       error: null,
@@ -80,7 +80,7 @@ describe('VideoWatchView', () => {
 
   it('shows failed message when failed', () => {
     const video = makeVideo({ status: 'failed' })
-    vi.mocked(watchFeature.useVideoPolling).mockReturnValue({
+    vi.mocked(watchFeature.useVideoWatchFeed).mockReturnValue({
       video,
       watch: { video_id: video.id, status: 'failed' },
       error: null,
@@ -99,7 +99,7 @@ describe('VideoWatchView', () => {
       duration_sec: 90,
     })
     const manifest = 'http://localhost:8080/stream/x/master.m3u8'
-    vi.mocked(watchFeature.useVideoPolling).mockReturnValue({
+    vi.mocked(watchFeature.useVideoWatchFeed).mockReturnValue({
       video,
       watch: { video_id: video.id, status: 'ready', manifest_url: manifest },
       error: null,
@@ -129,7 +129,7 @@ describe('VideoWatchView', () => {
     vi.mocked(videoApi.deleteVideo).mockResolvedValue(undefined)
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
 
-    vi.mocked(watchFeature.useVideoPolling).mockReturnValue({
+    vi.mocked(watchFeature.useVideoWatchFeed).mockReturnValue({
       video,
       watch: {
         video_id: video.id,

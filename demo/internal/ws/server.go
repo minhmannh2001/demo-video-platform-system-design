@@ -101,12 +101,16 @@ func (c *connState) writeJSON(v any) error {
 	if err != nil {
 		return err
 	}
+	return c.writeText(b)
+}
+
+func (c *connState) writeText(p []byte) error {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
 	if err := c.conn.SetWriteDeadline(time.Now().Add(writeWait)); err != nil {
 		return err
 	}
-	return c.conn.WriteMessage(websocket.TextMessage, b)
+	return c.conn.WriteMessage(websocket.TextMessage, p)
 }
 
 func (c *connState) ping(deadline time.Time) error {
@@ -233,6 +237,7 @@ func (s *Server) handleSubscribe(st *connState, m ClientMessage) error {
 		if errors.Is(err, errUnknownChannel) {
 			code = ErrUnknownChannel
 		}
+		slog.Warn("ws_subscribe_invalid", "code", code, "video_id", m.VideoID, "channel", m.Channel, "error", err)
 		_ = st.writeJSON(map[string]any{
 			"type": TypeError, "v": ProtocolV,
 			"code": code, "message": err.Error(),
@@ -241,6 +246,7 @@ func (s *Server) handleSubscribe(st *connState, m ClientMessage) error {
 	}
 	ok, already, reason := st.trySubscribe(topic)
 	if !ok {
+		slog.Warn("ws_subscribe_rejected", "topic", topic, "reason", reason)
 		_ = st.writeJSON(map[string]any{
 			"type": TypeError, "v": ProtocolV,
 			"code": reason, "message": "subscribe rejected",
@@ -248,8 +254,9 @@ func (s *Server) handleSubscribe(st *connState, m ClientMessage) error {
 		return nil
 	}
 	if !already {
-		s.hub.Subscribe(st.conn, topic)
+		s.hub.Subscribe(st.conn, topic, st.writeText)
 	}
+	slog.Debug("ws_subscribed", "topic", topic, "already", already)
 	return st.writeJSON(map[string]any{
 		"type": TypeSubscribed, "v": ProtocolV, "topic": topic,
 	})
@@ -262,6 +269,7 @@ func (s *Server) handleUnsubscribe(st *connState, m ClientMessage) error {
 		if errors.Is(err, errUnknownChannel) {
 			code = ErrUnknownChannel
 		}
+		slog.Warn("ws_unsubscribe_invalid", "code", code, "video_id", m.VideoID, "channel", m.Channel, "error", err)
 		_ = st.writeJSON(map[string]any{
 			"type": TypeError, "v": ProtocolV,
 			"code": code, "message": err.Error(),
@@ -269,6 +277,7 @@ func (s *Server) handleUnsubscribe(st *connState, m ClientMessage) error {
 		return nil
 	}
 	if !st.removeTopic(topic) {
+		slog.Warn("ws_unsubscribe_rejected", "topic", topic, "reason", "not_subscribed")
 		_ = st.writeJSON(map[string]any{
 			"type": TypeError, "v": ProtocolV,
 			"code": ErrInvalidSubscribe, "message": "not subscribed to topic",
@@ -276,6 +285,7 @@ func (s *Server) handleUnsubscribe(st *connState, m ClientMessage) error {
 		return nil
 	}
 	s.hub.Unsubscribe(st.conn, topic)
+	slog.Debug("ws_unsubscribed", "topic", topic)
 	return st.writeJSON(map[string]any{
 		"type": TypeUnsubscribed, "v": ProtocolV, "topic": topic,
 	})

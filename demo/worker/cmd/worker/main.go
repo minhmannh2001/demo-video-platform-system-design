@@ -17,6 +17,7 @@ import (
 	"video-platform/demo/internal/tracing"
 	"video-platform/demo/internal/videometaqueue"
 	"video-platform/demo/internal/worker"
+	"video-platform/demo/internal/wsevents"
 
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
@@ -91,6 +92,11 @@ func main() {
 		}
 	}
 
+	var wsBridge *wsevents.Bridge
+	if ch := cfg.WSEventChannel; ch != "" {
+		wsBridge = wsevents.NewBridge(nil, rdb, ch)
+	}
+
 	proc := worker.NewProcessor(worker.Deps{
 		S3:                awsCli.S3,
 		RawBucket:         cfg.S3RawBucket,
@@ -101,6 +107,8 @@ func main() {
 		TempDirParent:     os.TempDir(),
 		MetadataPublisher: metaPub,
 		MetadataQueueURL:  metaQueueURL,
+		PublicBaseURL:     cfg.PublicBaseURL,
+		Realtime:          wsBridge,
 	})
 
 	runCtx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

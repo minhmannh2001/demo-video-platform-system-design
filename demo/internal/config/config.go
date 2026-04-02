@@ -32,6 +32,9 @@ type Config struct {
 	PublicBaseURL     string
 	// WebSocketToken optional; non-empty requires ?token= on GET /ws upgrade (see internal/ws).
 	WebSocketToken string
+	// WSEventChannel: Redis Pub/Sub channel for cross-process WebSocket events (worker → API, multi-pod).
+	// Empty = Hub in-process only (worker cannot push to browser WS without this or another bridge).
+	WSEventChannel string
 }
 
 func Load() Config {
@@ -71,6 +74,7 @@ func Load() Config {
 		CORSOrigins:              cors,
 		PublicBaseURL:            strings.TrimRight(getenv("PUBLIC_BASE_URL", "http://localhost:8080"), "/"),
 		WebSocketToken:           strings.TrimSpace(os.Getenv("WEBSOCKET_TOKEN")),
+		WSEventChannel:           strings.TrimSpace(os.Getenv("WS_EVENT_CHANNEL")),
 	}
 }
 

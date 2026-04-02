@@ -8,7 +8,7 @@ import {
   isReady,
   StatusBadge,
 } from '@/entities/video'
-import { useVideoPolling } from '@/features/video-watch'
+import { useVideoWatchFeed } from '@/features/video-watch'
 import { VideoPlayer } from '@/widgets/video-player'
 import { PageMain } from '@/shared/ui/PageChrome'
 import { AppHeader } from '@/widgets/app-header'
@@ -34,7 +34,7 @@ function playbackStatusLabel(status: string): string {
 export function VideoWatchView() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { video, watch, error, loading } = useVideoPolling(id)
+  const { video, watch, error, loading } = useVideoWatchFeed(id)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   // One hook per error source so we don’t toast twice for the same channel or spam polls.

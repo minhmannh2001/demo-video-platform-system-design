@@ -17,6 +17,7 @@ import (
 	"video-platform/demo/internal/streamutil"
 	"video-platform/demo/internal/tracing"
 	"video-platform/demo/internal/videometaqueue"
+	"video-platform/demo/internal/ws"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -51,18 +52,27 @@ type CacheInvalidator interface {
 	Del(ctx context.Context, id string) error
 }
 
+// RealtimeBroadcaster sends WebSocket JSON payloads to topic subscribers (Redis when configured).
+type RealtimeBroadcaster interface {
+	Publish(ctx context.Context, topic string, body []byte) error
+}
+
 // Deps bundles worker dependencies (injectable for tests).
 type Deps struct {
-	S3              S3GetPut
-	RawBucket       string
-	EncodedBucket   string
-	Store           VideoStore
-	Encoder         Encoder
-	Cache           CacheInvalidator
-	TempDirParent   string
+	S3            S3GetPut
+	RawBucket     string
+	EncodedBucket string
+	Store         VideoStore
+	Encoder       Encoder
+	Cache         CacheInvalidator
+	TempDirParent string
 	// MetadataPublisher notifies search-index consumers when encoding status changes; nil disables.
 	MetadataPublisher videometaqueue.Publisher
 	MetadataQueueURL  string
+	// PublicBaseURL builds manifest URLs in WS payloads (same as API).
+	PublicBaseURL string
+	// Realtime pushes video.updated after MarkReady/MarkFailed; nil disables.
+	Realtime RealtimeBroadcaster
 }
 
 // Processor handles one encode job per HandleMessage call.
@@ -180,6 +190,7 @@ func (p *Processor) processVideo(ctx context.Context, id string) error {
 	}
 	slog.InfoContext(ctx, "video_mark_ready", "video_id", id, "encoded_prefix", prefix)
 	p.publishMetadataStatusChange(ctx, id)
+	p.publishVideoWS(ctx, id, models.StatusReady)
 
 	if p.d.Cache != nil {
 		c, sp := tracing.Start(ctx, "redis.video.del",
@@ -204,6 +215,32 @@ func (p *Processor) markFailed(ctx context.Context, id string) {
 	err := p.d.Store.MarkFailed(c, id)
 	tracing.Finish(sp, err)
 	p.publishMetadataStatusChange(ctx, id)
+	p.publishVideoWS(ctx, id, models.StatusFailed)
+}
+
+func (p *Processor) publishVideoWS(ctx context.Context, videoID, status string) {
+	if p.d.Realtime == nil || p.d.PublicBaseURL == "" {
+		return
+	}
+	c, sp := tracing.Start(ctx, "ws.video.publish",
+		attribute.String("ws.event_type", ws.TypeVideoUpdated),
+		attribute.String("video.id", videoID),
+		attribute.String("video.status", status),
+	)
+	body, err := ws.EnvelopeVideoUpdatedFromStatus(p.d.PublicBaseURL, videoID, status)
+	if err != nil {
+		tracing.Finish(sp, err)
+		slog.WarnContext(ctx, "ws_video_envelope_failed", "error", err, "video_id", videoID)
+		return
+	}
+	topic := "video:" + videoID
+	pubErr := p.d.Realtime.Publish(c, topic, body)
+	tracing.Finish(sp, pubErr)
+	if pubErr != nil {
+		slog.WarnContext(ctx, "ws_video_publish_failed", "error", pubErr, "video_id", videoID)
+		return
+	}
+	slog.DebugContext(ctx, "ws_video_published", "video_id", videoID, "status", status, "topic", topic)
 }
 
 func (p *Processor) publishMetadataStatusChange(ctx context.Context, videoID string) {

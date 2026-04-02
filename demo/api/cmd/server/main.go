@@ -19,6 +19,7 @@ import (
 	"video-platform/demo/internal/tracing"
 	"video-platform/demo/internal/videometaqueue"
 	"video-platform/demo/internal/ws"
+	"video-platform/demo/internal/wsevents"
 
 	"github.com/go-chi/chi/v5"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
@@ -28,6 +29,9 @@ func main() {
 	applog.Init("video-api")
 	cfg := config.Load()
 	ctx := context.Background()
+
+	runCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	shutdownTrace, err := tracing.Init(ctx, tracing.InitConfig{
 		ServiceName:               "video-api",
@@ -98,12 +102,18 @@ func main() {
 		videoSearch = esCli
 	}
 
-	h := handlers.New(cfg, awsCli.S3, awsCli.SQS, queueURL, metaQueueURL, videoStore, redisCache, metaPub, videoSearch)
-
 	wsSrv := ws.New(ws.Config{
 		AllowedOrigins: cfg.CORSOrigins,
 		Token:          cfg.WebSocketToken,
 	})
+	wsBridge := wsevents.NewBridge(wsSrv.Hub(), redisCache.Redis(), cfg.WSEventChannel)
+	if cfg.WSEventChannel != "" {
+		go func() {
+			wsBridge.RunSubscriber(runCtx)
+		}()
+	}
+
+	h := handlers.New(cfg, awsCli.S3, awsCli.SQS, queueURL, metaQueueURL, videoStore, redisCache, metaPub, videoSearch, wsBridge)
 
 	root := chi.NewRouter()
 	root.Use(handlers.RequestLogMiddleware())
@@ -113,9 +123,6 @@ func main() {
 
 	handler := tracing.WrapHandler(root)
 
-	// ReadTimeout applies to the entire request including multipart body. A fixed
-	// short limit (e.g. 60s) breaks large/slow uploads and surfaces as net.OpError
-	// "read" on TCP. Use 0 for no read deadline on the body (typical for upload APIs).
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           handler,
@@ -132,9 +139,7 @@ func main() {
 		}
 	}()
 
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-	<-sig
+	<-runCtx.Done()
 	slog.Info("shutting down")
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
