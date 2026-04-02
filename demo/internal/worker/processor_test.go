@@ -175,13 +175,25 @@ func TestHandleMessage_s3RawMissing(t *testing.T) {
 		id: {ID: id, RawS3Key: "videos/" + id + "/original.mp4", Status: models.StatusProcessing},
 	}}
 	s3f := &fakeS3{objects: map[string][]byte{}}
-	p := testProcessor(t, s3f, st, &fakeEncoder{}, "raw", "enc")
+	ca := &fakeCache{}
+	p := NewProcessor(Deps{
+		S3:            s3f,
+		RawBucket:     "raw",
+		EncodedBucket: "enc",
+		Store:         st,
+		Encoder:       &fakeEncoder{},
+		Cache:         ca,
+		TempDirParent: t.TempDir(),
+	})
 	err := p.HandleMessage(context.Background(), mustJSON(t, map[string]string{"video_id": id}))
 	if err == nil {
 		t.Fatal("want error")
 	}
 	if len(st.failedIDs) != 1 || st.failedIDs[0] != id {
 		t.Fatalf("MarkFailed: %#v", st.failedIDs)
+	}
+	if len(ca.deleted) != 1 || ca.deleted[0] != id {
+		t.Fatalf("cache del on MarkFailed: %#v", ca.deleted)
 	}
 }
 
@@ -192,13 +204,25 @@ func TestHandleMessage_encodeError(t *testing.T) {
 		id: {ID: id, RawS3Key: rawKey, Status: models.StatusProcessing},
 	}}
 	s3f := &fakeS3{objects: map[string][]byte{"raw/" + rawKey: []byte("binary")}}
-	p := testProcessor(t, s3f, st, &fakeEncoder{err: fmt.Errorf("encode boom")}, "raw", "enc")
+	ca := &fakeCache{}
+	p := NewProcessor(Deps{
+		S3:            s3f,
+		RawBucket:     "raw",
+		EncodedBucket: "enc",
+		Store:         st,
+		Encoder:       &fakeEncoder{err: fmt.Errorf("encode boom")},
+		Cache:         ca,
+		TempDirParent: t.TempDir(),
+	})
 	err := p.HandleMessage(context.Background(), mustJSON(t, map[string]string{"video_id": id}))
 	if err == nil {
 		t.Fatal("want error")
 	}
 	if len(st.failedIDs) != 1 {
 		t.Fatalf("want MarkFailed, got %#v", st.failedIDs)
+	}
+	if len(ca.deleted) != 1 || ca.deleted[0] != id {
+		t.Fatalf("cache del on MarkFailed: %#v", ca.deleted)
 	}
 }
 

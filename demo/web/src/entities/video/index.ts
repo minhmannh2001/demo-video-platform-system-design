@@ -6,7 +6,12 @@ export type {
   VideoStatus,
   WatchResponse,
 } from './model/types'
-export { isFailed, isProcessing, isReady } from './model/status'
+export {
+  effectiveVideoStatus,
+  isFailed,
+  isProcessing,
+  isReady,
+} from './model/status'
 export {
   formatDurationSec,
   formatPublishedAt,

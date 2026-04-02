@@ -29,6 +29,11 @@ type Video struct {
 	DurationSec   int         `bson:"duration_sec,omitempty" json:"duration_sec,omitempty"`
 	CreatedAt     time.Time   `bson:"created_at" json:"created_at"`
 	UpdatedAt     time.Time   `bson:"updated_at" json:"updated_at"`
+
+	// API-only (not persisted): filled by handlers for GET /videos and GET /videos/{id} when status=ready.
+	ThumbnailURL       string                   `bson:"-" json:"thumbnail_url,omitempty"`
+	Qualities          []string                 `bson:"-" json:"qualities,omitempty"`
+	PlaybackRenditions []WatchPlaybackRendition `bson:"-" json:"playback_renditions,omitempty"`
 }
 
 // Rendition describes one encoded quality profile produced from a source video.
@@ -58,9 +63,21 @@ func ValidVisibility(s string) bool {
 	}
 }
 
+// WatchPlaybackRendition is a ready-state variant with an absolute playlist URL for the client.
+type WatchPlaybackRendition struct {
+	Quality     string `json:"quality"`
+	Width       int    `json:"width,omitempty"`
+	Height      int    `json:"height,omitempty"`
+	Bitrate     int    `json:"bitrate,omitempty"`
+	PlaylistURL string `json:"playlist_url"`
+}
+
 type WatchResponse struct {
-	VideoID     string `json:"video_id"`
-	Status      string `json:"status"`
-	ManifestURL string `json:"manifest_url,omitempty"`
-	Message     string `json:"message,omitempty"`
+	VideoID      string                   `json:"video_id"`
+	Status       string                   `json:"status"`
+	ManifestURL  string                   `json:"manifest_url,omitempty"`
+	ThumbnailURL string                   `json:"thumbnail_url,omitempty"`
+	Qualities    []string                 `json:"qualities,omitempty"`  // e.g. ["360p","720p","auto"]
+	Renditions   []WatchPlaybackRendition `json:"renditions,omitempty"` // detail + playlist_url per quality
+	Message      string                   `json:"message,omitempty"`
 }

@@ -64,6 +64,20 @@ describe('UploadDetailView', () => {
     expect(screen.getByText(/encoding in progress/i)).toBeInTheDocument()
   })
 
+  it('shows failed when watch is failed even if video doc still says processing', () => {
+    const video = makeVideo({ status: 'processing' })
+    vi.mocked(watchFeature.useVideoWatchFeed).mockReturnValue({
+      video,
+      watch: { video_id: video.id, status: 'failed', message: 'encoding failed' },
+      error: null,
+      loading: false,
+      refresh: vi.fn(),
+    })
+    renderDetail(video.id)
+    expect(screen.getByText(/encoding failed/i)).toBeInTheDocument()
+    expect(screen.queryByText(/encoding in progress/i)).not.toBeInTheDocument()
+  })
+
   it('shows Open player when ready with manifest', () => {
     const video = makeVideo({ status: 'ready' })
     const manifest = 'http://localhost/hls/master.m3u8'

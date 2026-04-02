@@ -58,3 +58,33 @@ func TestFFmpegEncoder_Integration(t *testing.T) {
 		t.Fatalf("master should reference both variant playlists:\n%s", ms)
 	}
 }
+
+func TestFFmpegEncoder_Integration_NoAudioSource(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skip ffmpeg integration in -short")
+	}
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		t.Skip("ffmpeg not on PATH")
+	}
+
+	dir := t.TempDir()
+	inPath := filepath.Join(dir, "in-no-audio.mp4")
+	gen := exec.Command("ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+		"-f", "lavfi", "-i", "color=c=black:s=320x240:d=1",
+		"-c:v", "libx264", inPath)
+	if out, err := gen.CombinedOutput(); err != nil {
+		t.Fatalf("gen input no-audio: %v: %s", err, out)
+	}
+
+	outDir := filepath.Join(dir, "hls")
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var enc FFmpegEncoder
+	if err := enc.EncodeToHLS(context.Background(), inPath, outDir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(outDir, "master.m3u8")); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -9,7 +9,9 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -152,6 +154,7 @@ func (p *Processor) processVideo(ctx context.Context, id string) error {
 		return fmt.Errorf("download raw: %w", err)
 	}
 	slog.InfoContext(ctx, "encode_raw_downloaded", "video_id", id, "local_path", inPath)
+	durationSec := probeDurationSec(ctx, inPath)
 
 	hlsDir := filepath.Join(workDir, "hls")
 	if err := os.MkdirAll(hlsDir, 0o755); err != nil {
@@ -187,7 +190,7 @@ func (p *Processor) processVideo(ctx context.Context, id string) error {
 			attribute.String("worker.mongo.op", "mark_ready"),
 			vid,
 		)
-		err := p.d.Store.MarkReady(c, id, prefix, 0, streamutil.ThumbnailStreamRelative, defaultRenditions)
+		err := p.d.Store.MarkReady(c, id, prefix, durationSec, streamutil.ThumbnailStreamRelative, defaultRenditions)
 		tracing.Finish(sp, err)
 		if err != nil {
 			return err
@@ -209,18 +212,52 @@ func (p *Processor) processVideo(ctx context.Context, id string) error {
 	return nil
 }
 
+// probeDurationSec reads media duration using ffprobe. Returns 0 when unavailable.
+func probeDurationSec(ctx context.Context, inputPath string) int {
+	cmd := exec.CommandContext(ctx, "ffprobe",
+		"-v", "error",
+		"-show_entries", "format=duration",
+		"-of", "default=noprint_wrappers=1:nokey=1",
+		inputPath,
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return 0
+	}
+	s := strings.TrimSpace(string(out))
+	if s == "" {
+		return 0
+	}
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil || f <= 0 {
+		return 0
+	}
+	return int(f + 0.5)
+}
+
 func (p *Processor) markFailed(ctx context.Context, id string) {
+	vid := attribute.String("video.id", id)
 	slog.ErrorContext(ctx, "video_mark_failed", "video_id", id)
 	c, sp := tracing.Start(ctx, "mongo.videos.updateOne",
 		attribute.String("db.system", "mongodb"),
 		attribute.String("db.mongodb.collection", "videos"),
 		attribute.String("worker.mongo.op", "mark_failed"),
-		attribute.String("video.id", id),
+		vid,
 	)
 	err := p.d.Store.MarkFailed(c, id)
 	tracing.Finish(sp, err)
 	p.publishMetadataStatusChange(ctx, id)
 	p.publishVideoWS(ctx, id, models.StatusFailed)
+
+	if p.d.Cache != nil {
+		c2, sp2 := tracing.Start(ctx, "redis.video.del",
+			attribute.String("redis.key", "video:"+id),
+			vid,
+		)
+		delErr := p.d.Cache.Del(c2, id)
+		tracing.Finish(sp2, delErr)
+		_ = delErr
+	}
 }
 
 func (p *Processor) publishVideoWS(ctx context.Context, videoID, status string) {

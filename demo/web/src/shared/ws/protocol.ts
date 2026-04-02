@@ -64,6 +64,15 @@ export type VideoUpdatedPayload = {
   video_id: string;
   status?: string;
   manifest_url?: string;
+  thumbnail_url?: string;
+  qualities?: string[];
+  renditions?: Array<{
+    quality: string;
+    width?: number;
+    height?: number;
+    bitrate?: number;
+    playlist_url: string;
+  }>;
   message?: string;
 };
 

@@ -378,6 +378,10 @@ func TestGetVideo_cacheHit(t *testing.T) {
 	if got.Title != "cached" {
 		t.Fatalf("got %+v", got)
 	}
+	wantThumb := "http://localhost:8080/stream/" + id + "/thumbnail.jpg"
+	if got.ThumbnailURL != wantThumb {
+		t.Fatalf("thumbnail_url: %q want %q", got.ThumbnailURL, wantThumb)
+	}
 }
 
 func TestGetVideo_notFound(t *testing.T) {
@@ -397,7 +401,15 @@ func TestGetVideo_notFound(t *testing.T) {
 func TestWatch_ready(t *testing.T) {
 	id := "507f1f77bcf86cd799439011"
 	st := &fakeStore{byID: map[string]*models.Video{
-		id: {ID: id, Status: models.StatusReady},
+		id: {
+			ID:           id,
+			Status:       models.StatusReady,
+			ThumbnailKey: "thumbnail.jpg",
+			Renditions: []models.Rendition{
+				{Quality: "360p", Width: 640, Height: 360, Key: "360p/prog.m3u8"},
+				{Quality: "720p", Width: 1280, Height: 720, Key: "720p/prog.m3u8"},
+			},
+		},
 	}}
 	h := New(testCfg(), &fakeS3{}, &fakeSQS{}, "q", "", st, nil, nil, nil, nil)
 	srv := httptest.NewServer(h.Routes())
@@ -412,6 +424,18 @@ func TestWatch_ready(t *testing.T) {
 	if w.ManifestURL != "http://localhost:8080/stream/"+id+"/master.m3u8" {
 		t.Fatalf("manifest: %q", w.ManifestURL)
 	}
+	if w.ThumbnailURL != "http://localhost:8080/stream/"+id+"/thumbnail.jpg" {
+		t.Fatalf("thumbnail_url: %q", w.ThumbnailURL)
+	}
+	if len(w.Qualities) != 3 || w.Qualities[0] != "360p" || w.Qualities[1] != "720p" || w.Qualities[2] != "auto" {
+		t.Fatalf("qualities: %#v", w.Qualities)
+	}
+	if len(w.Renditions) != 2 {
+		t.Fatalf("renditions: %+v", w.Renditions)
+	}
+	if w.Renditions[0].PlaylistURL != "http://localhost:8080/stream/"+id+"/360p/prog.m3u8" {
+		t.Fatalf("360p url: %q", w.Renditions[0].PlaylistURL)
+	}
 }
 
 func TestDeleteVideo_success(t *testing.T) {
@@ -419,8 +443,8 @@ func TestDeleteVideo_success(t *testing.T) {
 	rawKey := "videos/" + id + "/original.mp4"
 	encKey := "videos/" + id + "/hls/master.m3u8"
 	s3f := &fakeS3{objects: map[string][]byte{
-		rawKey:  []byte("raw"),
-		encKey:  []byte("#EXTM3U"),
+		rawKey: []byte("raw"),
+		encKey: []byte("#EXTM3U"),
 	}}
 	st := &fakeStore{byID: map[string]*models.Video{
 		id: {

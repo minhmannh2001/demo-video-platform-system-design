@@ -324,6 +324,9 @@ func (h *Handler) ListVideos(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.InfoContext(ctx, "list_videos", "count", len(list))
+	for i := range list {
+		enrichPlaybackFields(&list[i], h.cfg.PublicBaseURL)
+	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(list)
 }
@@ -347,6 +350,7 @@ func (h *Handler) GetVideo(w http.ResponseWriter, r *http.Request) {
 		case getErr == nil && cv != nil:
 			tracing.Finish(sp, nil)
 			slog.InfoContext(ctx, "get_video", "video_id", id, "cache_hit", true)
+			enrichPlaybackFields(cv, h.cfg.PublicBaseURL)
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(cv)
 			return
@@ -384,6 +388,7 @@ func (h *Handler) GetVideo(w http.ResponseWriter, r *http.Request) {
 		tracing.Finish(sp, setErr)
 	}
 	slog.InfoContext(ctx, "get_video", "video_id", id, "cache_hit", false, "status", v.Status)
+	enrichPlaybackFields(v, h.cfg.PublicBaseURL)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(v)
 }
@@ -445,6 +450,7 @@ func (h *Handler) PatchVideo(w http.ResponseWriter, r *http.Request) {
 	h.publishVideoMetadata(ctx, videometaqueue.NewEvent(id, videometaqueue.OpUpdated, v.UpdatedAt))
 	h.pushCatalogInvalidate(ctx)
 	slog.InfoContext(ctx, "video_metadata_patched", "video_id", id)
+	enrichPlaybackFields(v, h.cfg.PublicBaseURL)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(v)
 }
@@ -470,14 +476,7 @@ func (h *Handler) Watch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.InfoContext(ctx, "watch_status", "video_id", id, "video_status", v.Status)
-	resp := models.WatchResponse{VideoID: id, Status: v.Status}
-	if v.Status == models.StatusReady {
-		resp.ManifestURL = streamutil.ManifestURL(h.cfg.PublicBaseURL, id)
-	} else if v.Status == models.StatusProcessing {
-		resp.Message = "encoding in progress"
-	} else {
-		resp.Message = "encoding failed"
-	}
+	resp := watchResponseFromVideo(v, h.cfg.PublicBaseURL)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
 }
@@ -645,6 +644,72 @@ func (h *Handler) StreamObject(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", ct)
 	w.Header().Set("Cache-Control", "public, max-age=3600")
 	_, err = io.Copy(w, out.Body)
+}
+
+// enrichPlaybackFields sets JSON-only fields for ready videos (URLs for thumbnail and per-rendition playlists).
+func enrichPlaybackFields(v *models.Video, publicBase string) {
+	if v == nil {
+		return
+	}
+	v.ThumbnailURL = ""
+	v.Qualities = nil
+	v.PlaybackRenditions = nil
+	if publicBase == "" || v.Status != models.StatusReady {
+		return
+	}
+	if v.ThumbnailKey != "" {
+		if u, err := streamutil.StreamPublicURL(publicBase, v.ID, v.ThumbnailKey); err == nil {
+			v.ThumbnailURL = u
+		}
+	}
+	if v.ThumbnailURL == "" {
+		v.ThumbnailURL = streamutil.ThumbnailURL(publicBase, v.ID)
+	}
+	seen := make(map[string]struct{})
+	for _, r := range v.Renditions {
+		if r.Quality == "" {
+			continue
+		}
+		if _, ok := seen[r.Quality]; ok {
+			continue
+		}
+		seen[r.Quality] = struct{}{}
+		v.Qualities = append(v.Qualities, r.Quality)
+	}
+	v.Qualities = append(v.Qualities, "auto")
+	for _, r := range v.Renditions {
+		if r.Key == "" {
+			continue
+		}
+		pu, err := streamutil.RenditionPlaylistURL(publicBase, v.ID, r.Key)
+		if err != nil {
+			continue
+		}
+		v.PlaybackRenditions = append(v.PlaybackRenditions, models.WatchPlaybackRendition{
+			Quality: r.Quality, Width: r.Width, Height: r.Height, Bitrate: r.Bitrate, PlaylistURL: pu,
+		})
+	}
+}
+
+func watchResponseFromVideo(v *models.Video, publicBase string) models.WatchResponse {
+	if v == nil {
+		return models.WatchResponse{}
+	}
+	resp := models.WatchResponse{VideoID: v.ID, Status: v.Status}
+	switch v.Status {
+	case models.StatusReady:
+		resp.ManifestURL = streamutil.ManifestURL(publicBase, v.ID)
+		tmp := *v
+		enrichPlaybackFields(&tmp, publicBase)
+		resp.ThumbnailURL = tmp.ThumbnailURL
+		resp.Qualities = tmp.Qualities
+		resp.Renditions = tmp.PlaybackRenditions
+	case models.StatusProcessing:
+		resp.Message = "encoding in progress"
+	default:
+		resp.Message = "encoding failed"
+	}
+	return resp
 }
 
 // corsAllowHeaders merges a fixed allowlist with the browser's preflight

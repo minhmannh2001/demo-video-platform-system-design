@@ -9,6 +9,36 @@ function parseServerMessage(raw: unknown): { type?: string; payload?: unknown } 
   return { type: typeof o.type === 'string' ? o.type : undefined, payload: o.payload }
 }
 
+function readStringArray(v: unknown): string[] | undefined {
+  if (!Array.isArray(v)) return undefined
+  const out: string[] = []
+  for (const x of v) {
+    if (typeof x === 'string') out.push(x)
+  }
+  return out.length ? out : undefined
+}
+
+function readRenditions(v: unknown): WatchResponse['renditions'] {
+  if (!Array.isArray(v)) return undefined
+  const out: NonNullable<WatchResponse['renditions']> = []
+  for (const item of v) {
+    if (item === null || typeof item !== 'object') continue
+    const r = item as Record<string, unknown>
+    const quality = typeof r.quality === 'string' ? r.quality : ''
+    const playlist_url =
+      typeof r.playlist_url === 'string' ? r.playlist_url : ''
+    if (!quality || !playlist_url) continue
+    out.push({
+      quality,
+      playlist_url,
+      width: typeof r.width === 'number' ? r.width : undefined,
+      height: typeof r.height === 'number' ? r.height : undefined,
+      bitrate: typeof r.bitrate === 'number' ? r.bitrate : undefined,
+    })
+  }
+  return out.length ? out : undefined
+}
+
 function payloadToWatch(p: unknown, videoId: string): WatchResponse | null {
   if (p === null || typeof p !== 'object') return null
   const o = p as Record<string, unknown>
@@ -19,6 +49,10 @@ function payloadToWatch(p: unknown, videoId: string): WatchResponse | null {
     status: typeof o.status === 'string' ? o.status : '',
     manifest_url:
       typeof o.manifest_url === 'string' ? o.manifest_url : undefined,
+    thumbnail_url:
+      typeof o.thumbnail_url === 'string' ? o.thumbnail_url : undefined,
+    qualities: readStringArray(o.qualities),
+    renditions: readRenditions(o.renditions),
     message: typeof o.message === 'string' ? o.message : undefined,
   }
 }

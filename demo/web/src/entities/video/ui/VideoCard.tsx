@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Video as VideoIcon } from 'lucide-react'
 
@@ -23,11 +24,18 @@ export function VideoCard({
   titleHighlight,
   descriptionHighlight,
 }: Props) {
+  const [thumbFailed, setThumbFailed] = useState(false)
+  useEffect(() => {
+    setThumbFailed(false)
+  }, [video.id, video.thumbnail_url])
+
   const desc = video.description?.trim()
   const preview = desc ? truncateDescription(desc) : null
   const descFromHighlight =
     descriptionHighlight?.trim() &&
     renderSearchHighlight(descriptionHighlight.trim())
+
+  const showThumbnail = Boolean(video.thumbnail_url) && !thumbFailed
 
   return (
     <Link
@@ -42,15 +50,16 @@ export function VideoCard({
         <div
           className={cn(
             'relative aspect-video w-full overflow-hidden',
-            video.thumbnail_url ? 'bg-muted/30' : 'bg-card p-2.5 sm:p-3',
+            showThumbnail ? 'bg-muted/30' : 'bg-card p-2.5 sm:p-3',
           )}
         >
-          {video.thumbnail_url ? (
+          {showThumbnail && video.thumbnail_url ? (
             <img
               src={video.thumbnail_url}
               alt=""
               className="h-full w-full object-cover"
               loading="lazy"
+              onError={() => setThumbFailed(true)}
             />
           ) : (
             <div

@@ -1,1 +1,1 @@
-export { VideoPlayer } from './ui/VideoPlayer'
+export { VideoPlayer, type VideoPlayerRendition } from './ui/VideoPlayer'

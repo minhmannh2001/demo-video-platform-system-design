@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
 import type { Video } from '../model/types'
@@ -61,6 +61,17 @@ describe('VideoCard', () => {
       'img[src="https://example.com/poster.jpg"]',
     )
     expect(img).toBeTruthy()
+  })
+
+  it('shows No preview when thumbnail URL fails to load (404)', () => {
+    const { container } = renderCard(
+      base({ thumbnail_url: 'https://example.com/missing.jpg' }),
+    )
+    const img = container.querySelector('img')
+    expect(img).toBeTruthy()
+    fireEvent.error(img!)
+    expect(screen.getByText('No preview')).toBeInTheDocument()
+    expect(container.querySelector('img')).toBeNull()
   })
 
   it('shows No description when description is empty', () => {

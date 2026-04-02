@@ -1,5 +1,11 @@
 import { Link, useParams } from 'react-router-dom'
-import { isFailed, isProcessing, isReady, StatusBadge } from '@/entities/video'
+import {
+  effectiveVideoStatus,
+  isFailed,
+  isProcessing,
+  isReady,
+  StatusBadge,
+} from '@/entities/video'
 import { useVideoWatchFeed } from '@/features/video-watch'
 import { useToastOnError } from '@/shared/lib/useToastOnError'
 import { PageMain } from '@/shared/ui/PageChrome'
@@ -11,6 +17,10 @@ export function UploadDetailView() {
   const { id } = useParams<{ id: string }>()
   const { video, watch, error, loading } = useVideoWatchFeed(id)
   useToastOnError(error)
+
+  const displayStatus = video
+    ? effectiveVideoStatus(video.status, watch)
+    : null
 
   return (
     <div className="min-h-screen bg-background">
@@ -34,10 +44,10 @@ export function UploadDetailView() {
               {video?.title ?? id ?? 'Loading…'}
             </p>
           </div>
-          {video ? (
+          {video && displayStatus ? (
             <div className="flex flex-wrap items-center gap-2">
-              <StatusBadge status={video.status} />
-              {isReady(video.status) && watch?.manifest_url ? (
+              <StatusBadge status={displayStatus} />
+              {isReady(displayStatus) && watch?.manifest_url ? (
                 <Link
                   to={`/watch/${video.id}`}
                   className={cn(
@@ -71,17 +81,19 @@ export function UploadDetailView() {
             </dl>
 
             <div className="mt-6 border-t border-border pt-6">
-              {isProcessing(video.status) ? (
+              {displayStatus && isProcessing(displayStatus) ? (
                 <p className="text-muted-foreground">
                   Encoding in progress… This page refreshes automatically.
                 </p>
               ) : null}
-              {isFailed(video.status) ? (
+              {displayStatus && isFailed(displayStatus) ? (
                 <p className="text-destructive">
                   Encoding failed. Check the worker or source file.
                 </p>
               ) : null}
-              {isReady(video.status) && watch?.manifest_url ? (
+              {displayStatus &&
+              isReady(displayStatus) &&
+              watch?.manifest_url ? (
                 <p className="text-muted-foreground">
                   Ready to play. Use <strong>Open player</strong> above or{' '}
                   <Link
@@ -93,7 +105,9 @@ export function UploadDetailView() {
                   .
                 </p>
               ) : null}
-              {isReady(video.status) && !watch?.manifest_url ? (
+              {displayStatus &&
+              isReady(displayStatus) &&
+              !watch?.manifest_url ? (
                 <p className="text-muted-foreground">
                   Video is ready; manifest is still loading…
                 </p>

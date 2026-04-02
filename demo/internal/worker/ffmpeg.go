@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 // FFmpegEncoder runs ffmpeg to produce HLS artifacts for adaptive playback (Part 4 — implementation detail).
@@ -76,6 +77,11 @@ func extractJPEGThumbnail(ctx context.Context, inputPath, thumbPath string) erro
 
 // encodeTwoVariantHLS: single pass, split video to 360p + 720p; duplicate audio per variant; emit master.m3u8.
 func encodeTwoVariantHLS(ctx context.Context, inputPath, outputDir string) error {
+	hasAudio, err := sourceHasAudio(ctx, inputPath)
+	if err != nil {
+		return err
+	}
+
 	// Padded canvas keeps RESOLUTION in master playlist stable for ABR.
 	filter := fmt.Sprintf(
 		"[0:v]split=2[v360src][v720src];"+
@@ -89,16 +95,30 @@ func encodeTwoVariantHLS(ctx context.Context, inputPath, outputDir string) error
 	segmentPattern := filepath.Join(outputDir, "%v", "seg_%03d.ts")
 	master := filepath.Join(outputDir, "master.m3u8")
 
-	cmd := exec.CommandContext(ctx, "ffmpeg",
+	args := []string{
 		"-hide_banner", "-loglevel", "error", "-y",
 		"-i", inputPath,
 		"-filter_complex", filter,
-		"-map", "[v360]", "-map", "0:a?",
-		"-map", "[v720]", "-map", "0:a?",
+		"-map", "[v360]",
+	}
+	if hasAudio {
+		args = append(args, "-map", "0:a?")
+	}
+	args = append(args,
+		"-map", "[v720]",
+	)
+	if hasAudio {
+		args = append(args, "-map", "0:a?")
+	}
+	args = append(args,
 		"-c:v", "libx264", "-preset", "veryfast", "-profile:v", "main",
 		"-sc_threshold", "0",
 		"-g", fmt.Sprint(hlsGOPFrames), "-keyint_min", fmt.Sprint(hlsGOPFrames),
-		"-c:a", "aac", "-b:a", audioBitrate, "-ac", "2",
+	)
+	if hasAudio {
+		args = append(args, "-c:a", "aac", "-b:a", audioBitrate, "-ac", "2")
+	}
+	args = append(args,
 		"-b:v:0", videoBitrate360, "-maxrate:v:0", maxrate360, "-bufsize:v:0", bufsize360,
 		"-b:v:1", videoBitrate720, "-maxrate:v:1", maxrate720, "-bufsize:v:1", bufsize720,
 		"-hls_time", fmt.Sprint(hlsSegmentSec),
@@ -107,13 +127,36 @@ func encodeTwoVariantHLS(ctx context.Context, inputPath, outputDir string) error
 		"-hls_segment_type", "mpegts",
 		"-f", "hls",
 		"-master_pl_name", filepath.Base(master),
-		"-var_stream_map", fmt.Sprintf("v:0,a:0,name:%s v:1,a:1,name:%s", variant360Name, variant720Name),
+	)
+	if hasAudio {
+		args = append(args, "-var_stream_map", fmt.Sprintf("v:0,a:0,name:%s v:1,a:1,name:%s", variant360Name, variant720Name))
+	} else {
+		args = append(args, "-var_stream_map", fmt.Sprintf("v:0,name:%s v:1,name:%s", variant360Name, variant720Name))
+	}
+	args = append(args,
 		"-hls_segment_filename", segmentPattern,
 		outPlaylistPattern,
 	)
+
+	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("ffmpeg hls abr: %w: %s", err, string(out))
 	}
 	return nil
+}
+
+func sourceHasAudio(ctx context.Context, inputPath string) (bool, error) {
+	cmd := exec.CommandContext(ctx, "ffprobe",
+		"-v", "error",
+		"-select_streams", "a",
+		"-show_entries", "stream=index",
+		"-of", "csv=p=0",
+		inputPath,
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return false, fmt.Errorf("ffprobe audio streams: %w: %s", err, string(out))
+	}
+	return strings.TrimSpace(string(out)) != "", nil
 }

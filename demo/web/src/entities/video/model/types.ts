@@ -13,16 +13,31 @@ export type Video = {
   encoded_prefix?: string
   /** Poster / thumbnail URL when API provides one (optional). */
   thumbnail_url?: string
+  /** Ready-state labels for UI, e.g. ["360p","720p","auto"]. */
+  qualities?: string[]
+  /** Per-variant playlists when API enriches ready videos. */
+  playback_renditions?: WatchPlaybackRendition[]
   status: VideoStatus
   duration_sec?: number
   created_at: string
   updated_at: string
 }
 
+export type WatchPlaybackRendition = {
+  quality: string
+  width?: number
+  height?: number
+  bitrate?: number
+  playlist_url: string
+}
+
 export type WatchResponse = {
   video_id: string
   status: string
   manifest_url?: string
+  thumbnail_url?: string
+  qualities?: string[]
+  renditions?: WatchPlaybackRendition[]
   message?: string
 }
 

@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
+  effectiveVideoStatus,
   formatDurationSec,
   formatPublishedAt,
   isFailed,
@@ -63,6 +64,8 @@ export function VideoWatchView() {
 
   const title = video?.title ?? (loading ? 'Watch' : (id ?? 'Watch'))
   const desc = video?.description?.trim()
+  const encStatus =
+    video != null ? effectiveVideoStatus(video.status, watch) : null
 
   return (
     <div className="min-h-screen bg-background">
@@ -108,7 +111,7 @@ export function VideoWatchView() {
                       Status
                     </p>
                     <div className="mt-1">
-                      <StatusBadge status={video.status} />
+                      <StatusBadge status={encStatus ?? video.status} />
                     </div>
                   </div>
                 </div>
@@ -159,7 +162,10 @@ export function VideoWatchView() {
         {video && !loading ? (
           <div className="grid gap-6 lg:grid-cols-5 lg:gap-8">
             <div className="space-y-6 lg:col-span-3">
-              {video && isReady(video.status) && watch?.manifest_url ? (
+              {video &&
+              encStatus &&
+              isReady(encStatus) &&
+              watch?.manifest_url ? (
                 <div
                   className={cn(
                     panelClass,
@@ -167,11 +173,14 @@ export function VideoWatchView() {
                     'bg-black ring-foreground/20',
                   )}
                 >
-                  <VideoPlayer manifestUrl={watch.manifest_url} />
+                  <VideoPlayer
+                    manifestUrl={watch.manifest_url}
+                    renditions={watch.renditions}
+                  />
                 </div>
               ) : null}
 
-              {video && isProcessing(video.status) ? (
+              {video && encStatus && isProcessing(encStatus) ? (
                 <div className={panelClass}>
                   <p className="text-muted-foreground">
                     Encoding in progress… This page refreshes automatically when
@@ -180,7 +189,7 @@ export function VideoWatchView() {
                 </div>
               ) : null}
 
-              {video && isFailed(video.status) ? (
+              {video && encStatus && isFailed(encStatus) ? (
                 <div className={panelClass}>
                   <p className="text-destructive">
                     Encoding failed. The source file or worker may need
@@ -189,7 +198,10 @@ export function VideoWatchView() {
                 </div>
               ) : null}
 
-              {video && isReady(video.status) && !watch?.manifest_url ? (
+              {video &&
+              encStatus &&
+              isReady(encStatus) &&
+              !watch?.manifest_url ? (
                 <div className={panelClass}>
                   <p className="text-muted-foreground">
                     Video is ready, but the playback manifest is still loading…
