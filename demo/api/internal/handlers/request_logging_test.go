@@ -1,10 +1,13 @@
 package handlers
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -15,6 +18,54 @@ import (
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
 )
+
+type fakeHijackResponse struct {
+	*httptest.ResponseRecorder
+	hijackCalled bool
+}
+
+func (f *fakeHijackResponse) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	f.hijackCalled = true
+	return nil, nil, errors.New("stub hijack")
+}
+
+func TestStatusRecorder_delegatesHijackToUnderlying(t *testing.T) {
+	under := &fakeHijackResponse{ResponseRecorder: httptest.NewRecorder()}
+	sr := &statusRecorder{ResponseWriter: under, status: http.StatusOK}
+	_, _, err := sr.Hijack()
+	if err == nil || err.Error() != "stub hijack" {
+		t.Fatalf("Hijack: %v", err)
+	}
+	if !under.hijackCalled {
+		t.Fatal("expected delegated Hijack on underlying writer")
+	}
+}
+
+func TestRequestLogMiddleware_preservesHijackerForInnerHandler(t *testing.T) {
+	var logs bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	r := chi.NewRouter()
+	r.Use(RequestLogMiddleware())
+	r.Get("/ws", func(w http.ResponseWriter, _ *http.Request) {
+		hj, ok := w.(http.Hijacker)
+		if !ok {
+			t.Error("inner handler must see http.Hijacker (e.g. for WebSocket upgrade)")
+			return
+		}
+		_, _, _ = hj.Hijack()
+	})
+
+	under := &fakeHijackResponse{ResponseRecorder: httptest.NewRecorder()}
+	req := httptest.NewRequest(http.MethodGet, "/ws", nil)
+	r.ServeHTTP(under, req)
+
+	if !under.hijackCalled {
+		t.Fatal("Hijack was not delegated through statusRecorder to the real connection writer")
+	}
+}
 
 func TestRequestLogMiddleware(t *testing.T) {
 	var logs bytes.Buffer

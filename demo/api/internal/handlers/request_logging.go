@@ -1,7 +1,10 @@
 package handlers
 
 import (
+	"bufio"
+	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"time"
 
@@ -31,6 +34,23 @@ func (r *statusRecorder) Write(p []byte) (int, error) {
 		r.WriteHeader(http.StatusOK)
 	}
 	return r.ResponseWriter.Write(p)
+}
+
+// Hijack delegates to the underlying ResponseWriter so WebSocket upgrades work
+// (gorilla/websocket requires http.Hijacker on the writer passed to Upgrade).
+func (r *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hj, ok := r.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, errors.New("http.Hijacker not supported by wrapped ResponseWriter")
+	}
+	return hj.Hijack()
+}
+
+// Flush delegates to the underlying Flusher when present (optional for streaming).
+func (r *statusRecorder) Flush() {
+	if f, ok := r.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
 }
 
 // RequestLogMiddleware logs one line per HTTP request with request_id.

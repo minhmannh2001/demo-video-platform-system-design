@@ -81,7 +81,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		slog.Debug("websocket upgrade failed", "error", err)
+		slog.Error("websocket upgrade failed", "error", err)
 		return
 	}
 	s.serveConn(conn)

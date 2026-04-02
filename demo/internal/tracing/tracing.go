@@ -98,8 +98,30 @@ func httpSpanName(_ string, r *http.Request) string {
 	return r.Method + " " + path
 }
 
+// isWebSocketUpgradeRequest reports whether r is a typical browser WebSocket handshake.
+// We skip otelhttp for these so ResponseWriter stays an http.Hijacker (gorilla/websocket needs it).
+func isWebSocketUpgradeRequest(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	if !strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+		return false
+	}
+	conn := r.Header.Get("Connection")
+	if conn == "" {
+		return false
+	}
+	for _, p := range strings.Split(conn, ",") {
+		if strings.EqualFold(strings.TrimSpace(p), "upgrade") {
+			return true
+		}
+	}
+	return false
+}
+
 // WrapHandler adds an HTTP server span for every request (step 3: full API).
 // OPTIONS is skipped to avoid one trace per CORS preflight from the browser.
+// WebSocket upgrades are skipped so the inner handler receives a Hijacker-capable ResponseWriter.
 // When tracing is disabled, returns h unchanged.
 func WrapHandler(h http.Handler) http.Handler {
 	if !httpInstrumented {
@@ -108,7 +130,13 @@ func WrapHandler(h http.Handler) http.Handler {
 	return otelhttp.NewHandler(h, "http.server",
 		otelhttp.WithSpanNameFormatter(httpSpanName),
 		otelhttp.WithFilter(func(r *http.Request) bool {
-			return r.Method != http.MethodOptions
+			if r.Method == http.MethodOptions {
+				return false
+			}
+			if isWebSocketUpgradeRequest(r) {
+				return false
+			}
+			return true
 		}),
 	)
 }

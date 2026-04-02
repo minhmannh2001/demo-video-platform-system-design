@@ -6,6 +6,42 @@ import (
 	"testing"
 )
 
+func TestIsWebSocketUpgradeRequest(t *testing.T) {
+	t.Parallel()
+	req := func(h http.Header) *http.Request {
+		r := httptest.NewRequest(http.MethodGet, "/ws", nil)
+		for k, vv := range h {
+			for _, v := range vv {
+				r.Header.Add(k, v)
+			}
+		}
+		return r
+	}
+	if !isWebSocketUpgradeRequest(req(http.Header{
+		"Upgrade":               {"websocket"},
+		"Connection":            {"Upgrade"},
+		"Sec-WebSocket-Version": {"13"},
+	})) {
+		t.Fatal("expected true for typical browser handshake")
+	}
+	if isWebSocketUpgradeRequest(req(http.Header{
+		"Upgrade": {"websocket"},
+	})) {
+		t.Fatal("expected false without Connection: upgrade")
+	}
+	if isWebSocketUpgradeRequest(req(http.Header{
+		"Connection": {"Upgrade"},
+	})) {
+		t.Fatal("expected false without Upgrade: websocket")
+	}
+	if !isWebSocketUpgradeRequest(req(http.Header{
+		"Upgrade":    {"Websocket"},
+		"Connection": {"keep-alive, Upgrade"},
+	})) {
+		t.Fatal("expected true when Upgrade token appears in Connection list")
+	}
+}
+
 func TestWrapHandler_withoutInit_passesThrough(t *testing.T) {
 	httpInstrumented = false
 	t.Cleanup(func() { httpInstrumented = false })
