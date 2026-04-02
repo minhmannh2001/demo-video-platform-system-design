@@ -6,7 +6,7 @@ import { makeVideo } from '@/test/fixtures/video'
 import { UploadDetailView } from './UploadDetailView'
 
 vi.mock('@/features/video-watch', () => ({
-  useVideoPolling: vi.fn(),
+  useVideoWatchFeed: vi.fn(),
 }))
 
 function renderDetail(id: string) {
@@ -25,7 +25,7 @@ describe('UploadDetailView', () => {
   })
 
   it('shows back link to upload queue', () => {
-    vi.mocked(watchFeature.useVideoPolling).mockReturnValue({
+    vi.mocked(watchFeature.useVideoWatchFeed).mockReturnValue({
       video: null,
       watch: null,
       error: null,
@@ -39,7 +39,7 @@ describe('UploadDetailView', () => {
   })
 
   it('shows loading and id fallback in subtitle', () => {
-    vi.mocked(watchFeature.useVideoPolling).mockReturnValue({
+    vi.mocked(watchFeature.useVideoWatchFeed).mockReturnValue({
       video: null,
       watch: null,
       error: null,
@@ -53,7 +53,7 @@ describe('UploadDetailView', () => {
 
   it('shows processing copy', () => {
     const video = makeVideo({ status: 'processing' })
-    vi.mocked(watchFeature.useVideoPolling).mockReturnValue({
+    vi.mocked(watchFeature.useVideoWatchFeed).mockReturnValue({
       video,
       watch: { video_id: video.id, status: 'processing' },
       error: null,
@@ -67,7 +67,7 @@ describe('UploadDetailView', () => {
   it('shows Open player when ready with manifest', () => {
     const video = makeVideo({ status: 'ready' })
     const manifest = 'http://localhost/hls/master.m3u8'
-    vi.mocked(watchFeature.useVideoPolling).mockReturnValue({
+    vi.mocked(watchFeature.useVideoWatchFeed).mockReturnValue({
       video,
       watch: { video_id: video.id, status: 'ready', manifest_url: manifest },
       error: null,
@@ -82,7 +82,7 @@ describe('UploadDetailView', () => {
 
   it('shows manifest loading hint when ready without manifest', () => {
     const video = makeVideo({ status: 'ready' })
-    vi.mocked(watchFeature.useVideoPolling).mockReturnValue({
+    vi.mocked(watchFeature.useVideoWatchFeed).mockReturnValue({
       video,
       watch: { video_id: video.id, status: 'ready' },
       error: null,

@@ -1,6 +1,6 @@
 import { Link, useParams } from 'react-router-dom'
 import { isFailed, isProcessing, isReady, StatusBadge } from '@/entities/video'
-import { useVideoPolling } from '@/features/video-watch'
+import { useVideoWatchFeed } from '@/features/video-watch'
 import { useToastOnError } from '@/shared/lib/useToastOnError'
 import { PageMain } from '@/shared/ui/PageChrome'
 import { AppHeader } from '@/widgets/app-header'
@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils'
 
 export function UploadDetailView() {
   const { id } = useParams<{ id: string }>()
-  const { video, watch, error, loading } = useVideoPolling(id)
+  const { video, watch, error, loading } = useVideoWatchFeed(id)
   useToastOnError(error)
 
   return (

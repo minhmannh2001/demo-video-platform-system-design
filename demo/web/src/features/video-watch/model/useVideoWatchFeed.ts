@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { WatchResponse } from '@/entities/video'
 import { getWebSocketUrl } from '@/shared/config/env'
 import { useVideoPolling, type UseVideoPollingResult } from './useVideoPolling'
@@ -24,8 +24,8 @@ function payloadToWatch(p: unknown, videoId: string): WatchResponse | null {
 }
 
 /**
- * Watch page: HTTP polling + WebSocket `video.updated` for the same video_id.
- * When the socket is up, polling slows down as a fallback; push updates override watch state until the next full refresh.
+ * Watch + upload-detail: HTTP polling + WebSocket `video.updated` for the same video_id.
+ * When the socket is up, polling slows down as a fallback; push updates merge into watch and trigger one REST refresh so `video` (Mongo) stays in sync with status badges.
  */
 export function useVideoWatchFeed(
   videoId: string | undefined,
@@ -34,6 +34,8 @@ export function useVideoWatchFeed(
   const pollMs = wsLive ? 30_000 : 3000
   const poll = useVideoPolling(videoId, pollMs)
   const [wsWatch, setWsWatch] = useState<WatchResponse | null>(null)
+  const refreshRef = useRef(poll.refresh)
+  refreshRef.current = poll.refresh
 
   useEffect(() => {
     setWsWatch(null)
@@ -63,7 +65,10 @@ export function useVideoWatchFeed(
         const { type, payload } = parseServerMessage(msg)
         if (type !== 'video.updated') return
         const w = payloadToWatch(payload, videoId)
-        if (w) setWsWatch(w)
+        if (w) {
+          setWsWatch(w)
+          void refreshRef.current()
+        }
       } catch {
         /* ignore */
       }
